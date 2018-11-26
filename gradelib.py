@@ -111,11 +111,9 @@ def run_tests():
             if not limit or any(l in test.title.lower() for l in limit):
                 test()
         if not limit:
-            print("Score: %d/%d" % (TOTAL, POSSIBLE))
+            print("Score: %.f%% (%d/%d)" % (100 * TOTAL / POSSIBLE, TOTAL, POSSIBLE))
     except KeyboardInterrupt:
         pass
-    if TOTAL < POSSIBLE:
-        sys.exit(1)
 
 def get_current_test():
     if not CURRENT_TEST:
