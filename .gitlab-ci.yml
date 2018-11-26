@@ -1,0 +1,8 @@
+image: jos-ci
+
+before_script:
+  - make
+
+grade:
+  script: ./grade-lab1 --color=always
+  coverage: '/^Score: \d+% \(\d+\/\d+\)$/'
