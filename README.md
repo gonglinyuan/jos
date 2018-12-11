@@ -1,423 +1,484 @@
-# Lab 1
+# Lab 2
 
-**Exercise 1.** *Familiarize yourself with the assembly language materials available on the 6.828 reference page. You don't have to read them now, but you'll almost certainly want to refer to some of this material when reading and writing x86 assembly.*
-*We do recommend reading the section "The Syntax" in Brennan's Guide to Inline Assembly. It gives a good (and quite brief) description of the AT&T assembly syntax we'll be using with the GNU assembler in JOS.*
+**Exercise 1.** *In the file `kern/pmap.c`, you must implement code for the following functions (probably in the order given).* 
 
-**Exercise 2.** *Use GDB's si (Step Instruction) command to trace into the ROM BIOS for a few more instructions, and try to guess what it might be doing. You might want to look at Phil Storrs I/O Ports Description, as well as other materials on the 6.828 reference materials page. No need to figure out all the details - just the general idea of what the BIOS is doing first.*
-
-1. Set up stack pointer (ss and esp)
-2. Enable A20 gate through system port 0x92, to make it possible to access 32-bit (4GB) address space rather than 20-bit (1MB) by default
-3. Load interrupt descriptor table
-4. Load global descriptor table, the data structure to hold information about the different memory segments code can access
-5. Switch from real mode to protected mode
-6. Switch to 32-bit mode by changing the CS to 0x8
-7. Set segment registers
-8. Output “SeaBIOS (version …” to the screen
-
-**Exercise 3.** *Take a look at the lab tools guide, especially the section on GDB commands. Even if you're familiar with GDB, this includes some esoteric GDB commands that are useful for OS work.*
-
-*Set a breakpoint at address 0x7c00, which is where the boot sector will be loaded. Continue execution until that breakpoint. Trace through the code in boot/boot.S, using the source code and the disassembly file obj/boot/boot.asm to keep track of where you are. Also use the x/i command in GDB to disassemble sequences of instructions in the boot loader, and compare the original boot loader source code with both the disassembly in obj/boot/boot.asm and GDB.*
-
-*Trace into bootmain() in boot/main.c, and then into readsect(). Identify the exact assembly instructions that correspond to each of the statements in readsect(). Trace through the rest of readsect() and back out into bootmain(), and identify the begin and end of the for loop that reads the remaining sectors of the kernel from the disk. Find out what code will run when the loop is finished, set a breakpoint there, and continue to that breakpoint. Then step through the remainder of the boot loader.*
-
-Here, the processor start executing 32-bit mode:
-
-```asm
-7c2d:   ljmp    $PROT_MODE_CSEG, $protcseg
-```
-
-Readsect:
+In `boot_alloc()` , I added code:
 
 ```c
-waitdisk();
-    call   7c6a <waitdisk>
-outb(0x1F2, 1);
-    mov    $0x1f2,%edx
-    mov    $0x1,%al
-    out    %al,(%dx)
-outb(0x1F3, offset);
-    mov    $0x1f3,%edx
-    mov    %cl,%al
-    out    %al,(%dx)
-outb(0x1F4, offset >> 8);
-    mov    %ecx,%eax
-    mov    $0x1f4,%edx
-    shr    $0x8,%eax
-    out    %al,(%dx)
-outb(0x1F5, offset >> 16);
-    mov    %ecx,%eax
-    mov    $0x1f5,%edx
-    shr    $0x10,%eax
-    out    %al,(%dx)
-outb(0x1F6, (offset >> 24) | 0xE0);
-    mov    %ecx,%eax
-    mov    $0x1f6,%edx
-    shr    $0x18,%eax
-    or     $0xffffffe0,%eax
-    out    %al,(%dx)
-outb(0x1F7, 0x20);
-    mov    $0x1f7,%edx
-    mov    $0x20,%al
-    out    %al,(%dx)
-waitdisk();
-	call   7c6a <waitdisk>
-insl(0x1F0, dst, SECTSIZE/4);
-    mov    0x8(%ebp),%edi
-    mov    $0x80,%ecx
-    mov    $0x1f0,%edx
-    cld    
-    repnz insl (%dx),%es:(%edi)
-```
-
-Firstly, bootmain() read the length of the kernel in the ELF header to determine how many sectors it should read: 
-
-```assembly
-7d3f:   movzwl 0x1002c,%esi
-7d46:   lea    0x10000(%eax),%ebx
-7d4c:   shl    $0x5,%esi
-7d4f:   add    %ebx,%esi
-```
-
-The loop body of reading sectors is: 
-
-```c
-7d51:   cmp    %esi,%ebx
-7d53:   jae    7d6b <bootmain+0x56>
-7d55:   pushl  0x4(%ebx)
-7d58:   pushl  0x14(%ebx)
-7d5b:   add    $0x20,%ebx
-7d5e:   pushl  -0x14(%ebx)
-7d61:   call   7cdc <readseg>
-7d66:   add    $0xc,%esp
-7d69:   jmp    7d51 <bootmain+0x3c>
-```
-
-After the loop body, the code will call the entry point from the ELF header: 
-
-```assembly
-call   *0x10018
-```
-
-This is the last instruction executed by the bootloader. The first instruction executed by the kernel is:
-
-```assembly
-f010000c:   movw   $0x1234,0x472
-```
-
-**Exercise 4.** *Read about programming with pointers in C. The best reference for the C language is The C Programming Language by Brian Kernighan and Dennis Ritchie (known as 'K&R'). We recommend that students purchase this book (here is an Amazon Link) or find one of MIT's 7 copies.*
-
-*Read 5.1 (Pointers and Addresses) through 5.5 (Character Pointers and Functions) in K&R. Then download the code for pointers.c, run it, and make sure you understand where all of the printed values come from. In particular, make sure you understand where the pointer addresses in printed lines 1 and 6 come from, how all the values in printed lines 2 through 4 get there, and why the values printed in line 5 are seemingly corrupted.*
-
-*There are other references on pointers in C (e.g., A tutorial by Ted Jensen that cites K&R heavily), though not as strongly recommended.*
-
-**Exercise 5.** *Trace through the first few instructions of the boot loader again and identify the first instruction that would "break" or otherwise do the wrong thing if you were to get the boot loader's link address wrong. Then change the link address in boot/Makefrag to something wrong, run make clean, recompile the lab with make, and trace into the boot loader again to see what happens. Don't forget to change the link address back and make clean again afterward!*
-
-I changed the link address to 0x7c01, and the program stuck at:
-
-```asm
-7c30:  ljmp   $0x8,$0x7c36
-```
-
-**Exercise 6.** *We can examine memory using GDB's x command. The GDB manual has full details, but for now, it is enough to know that the command x/Nx ADDR prints N words of memory at ADDR. (Note that both 'x's in the command are lowercase.) Warning: The size of a word is not a universal standard. In GNU assembly, a word is two bytes (the 'w' in xorw, which stands for word, means 2 bytes).*
-
-*Reset the machine (exit QEMU/GDB and start them again). Examine the 8 words of memory at 0x00100000 at the point the BIOS enters the boot loader, and then again at the point the boot loader enters the kernel. Why are they different? What is there at the second breakpoint? (You do not really need to use QEMU to answer this question. Just think.)*
-
-At the beginning of the bootloader, the output of GDB is:
-
-```
-0x100000:       0x00000000      0x00000000      0x00000000      0x00000000
-0x100010:       0x00000000      0x00000000      0x00000000      0x00000000
-```
-
-At the beginning of the kernel, the output of GDB is:
-
-```
-0x100000:       0x1badb002      0x00000000      0xe4524ffe      0x7205c766
-0x100010:       0x34000004      0x0000b812      0x220f0011      0xc0200fd8
-```
-
-Because the ELF binary executable of the kernel is loaded into 0x100000. 
-
-**Exercise 7.** *Use QEMU and GDB to trace into the JOS kernel and stop at the movl %eax, %cr0. Examine memory at 0x00100000 and at 0xf0100000. Now, single step over that instruction using the stepi GDB command. Again, examine memory at 0x00100000 and at 0xf0100000. Make sure you understand what just happened.*
-
-*What is the first instruction after the new mapping is established that would fail to work properly if the mapping weren't in place? Comment out the movl %eax, %cr0 in kern/entry.S, trace into it, and see if you were right.*
-
-Before executing this instruction:
-
-```
-0x100000:       0x1badb002      0x00000000      0xe4524ffe      0x7205c766
-0x100010:       0x34000004      0x0000b812      0x220f0011      0xc0200fd8
-0xf0100000 <_start+4026531828>: 0x00000000      0x00000000      0x00000000      0x00000000
-0xf0100010 <entry+4>:   0x00000000      0x00000000      0x00000000      0x00000000
-```
-
-After executing this instruction:
-
-```
-0x100000:       0x1badb002      0x00000000      0xe4524ffe      0x7205c766
-0x100010:       0x34000004      0x0000b812      0x220f0011      0xc0200fd8
-0xf0100000 <_start+4026531828>: 0x1badb002      0x00000000      0xe4524ffe      0x7205c766
-0xf0100010 <entry+4>:   0x34000004      0x0000b812      0x220f0011      0xc0200fd8
-```
-
-If this instruction is commented out, the first instruction that will fail is: 
-
-```assembly
-jmp	*%eax
-```
-
-Because $relocated is assigned to EAX. The virtual memory is not mapped, so EAX points to zeros. The error message is:
-
-```
-qemu: fatal: Trying to execute code outside RAM or ROM at 0xf010002c
-```
-
-**Exercise 8.** *We have omitted a small fragment of code - the code necessary to print octal numbers using patterns of the form "%o". Find and fill in this code fragment.*
-
-```c
-num = getuint(&ap, lflag);
-base = 8;
-goto number;
-```
-
-1. *Explain the interface between printf.c and console.c. Specifically, what function does console.c export? How is this function used by printf.c?*
-
-   console.c exports cputchar() function.
-
-   printf.c use cputchar() in putch() function.
-
-   printf.c pass the function pointer of putch() to printfmt.c and the latter file will call this function by this pointer.
-
-2. *Explain the following from console.c:*
-
-   ```c
-   // if putting next char will exceed the width of the screen
-   if (crt_pos >= CRT_SIZE) {
-       int i;
-       // move output one line upward
-       memmove(crt_buf, crt_buf + CRT_COLS, (CRT_SIZE - CRT_COLS) * sizeof(uint16_t));
-       // clear the next line
-       for (i = CRT_SIZE - CRT_COLS; i < CRT_SIZE; i++)
-           crt_buf[i] = 0x0700 | ' ';
-       // reset the current column number
-       crt_pos -= CRT_COLS;
-   }
-   ```
-
-3. *In the call to cprintf(), to what does fmt point? To what does ap point?*
-
-   fmt points to the address where the format string starts.
-
-   ap points to where the function stack starts and hold the rest of the arguments.
-
-4. *List (in order of execution) each call to cons_putc, va_arg, and vcprintf. For cons_putc, list its argument as well. For va_arg, list what ap points to before and after the call. For vcprintf list the values of its two arguments.*
-
-   ```
-   vcprintf(fmt=0xf0101b6e, ap=0xf010ff54)
-       >>> x/s 0xf0101b6e:    "x %d, y %x, z %d\n"
-       >>> x/3dw 0xf010ff54:  1       3       4
-   
-       cons_putc(c=120)
-           >>> p/c c: 120 'x'
-   
-       cons_putc(c=32)
-           >>> p/c c: 32 ' '
-   
-       getint(ap=0xf010ff54, 0)
-           >>> p *0xf010ff54: 1
-           va_arg(*ap=1, int)
-               >>> p ap: 0xf010ff58
-               >>> p *0xf010ff58: 3
-   
-       cons_putc(c=49)
-           >>> p/c c: 49 '1'
-   
-       cons_putc(c=44)
-           >>> p/c c: 44 ','
-   
-       cons_putc(c=32)
-           >>> p/c c: 32 ' '
-   
-       cons_putc(c=121)
-           >>> p/c c: 121 'y'
-   
-       cons_putc(c=32)
-           >>> p/c c: 32 ' '
-   
-       getuint(ap=0xf010ff58, 0)
-           >>> p *0xf010ff58: 3
-           va_arg(*ap=3, unsigned int)
-               >>> p ap: 0xf010ff5c
-               >>> p *0xf010ff5c: 4
-   
-       cons_putc(c=51)
-           >>> p/c c: 41 '3'
-   
-       cons_putc(c=44)
-           >>> p/c c: 44 ','
-   
-       cons_putc(c=32)
-           >>> p/c c: 32 ' '
-   
-       cons_putc(c=122)
-           >>> p/c c: 122 'z'
-   
-       cons_putc(c=32)
-           >>> p/c c: 32 ' '
-   
-       getint(ap=0xf010ff5c, 0)
-           >>> p *0xf010ff5c: 4
-           va_arg(*ap=4, int)
-               >>> p ap: 0xf010ff60
-               >>> p *0xf010ff60: 4027645792
-   
-       cons_putc(c=52)
-           >>> p/c c: 52 '4'
-   
-       cons_putc(c=10)
-           >>> p/c c: 10 '\n'
-   ```
-
-5. *What is the output? Explain how this output is arrived at in the step-by-step manner of the previous exercise. Here's an ASCII table that maps bytes to characters.*
-
-   The output is He110 World.
-
-   e110 is hex representation of decimal 57616. 0x00646c72 is hex representation of \0dlr
-
-6. *The output depends on that fact that the x86 is little-endian. If the x86 were instead big-endian what would you set i to in order to yield the same output? Would you need to change 57616 to a different value?*
-
-   On a big-endian machine value of i would be 0x726c6400, but the 57616 would not change, because it's hex representation is the same
-
-7. *In the following code, what is going to be printed after 'y='? (note: the answer is not a specific value.) Why does this happen?*
-
-   Output is x=3, y=-1. At first ap points to 3, then for the next value it points to (&ap) + sizeof(int), which can be undefined, but in this case is value -1. 
-
-8. *Let's say that GCC changed its calling convention so that it pushed arguments on the stack in declaration order, so that the last argument is pushed last. How would you have to change cprintf or its interface so that it would still be possible to pass it a variable number of arguments?*
-
-   Push an integer after the last argument indicating the number of arguments.
-
-**Exercise 9.** *Determine where the kernel initializes its stack, and exactly where in memory its stack is located. How does the kernel reserve space for its stack? And at which "end" of this reserved area is the stack pointer initialized to point to?*
-
-The kernel initializes its stack at:
-
-```assembly
-f0100034:   mov    $0xf0110000,%esp
-```
-
-In memory, the stack is located at 0x110000.
-
-The memory for the stack is 0x000000 to 0x110000.
-
-**Exercise 10.** *To become familiar with the C calling conventions on the x86, find the address of the test_backtrace function in obj/kern/kernel.asm, set a breakpoint there, and examine what happens each time it gets called after the kernel starts. How many 32-bit words does each recursive nesting level of test_backtrace push on the stack, and what are those words?*
-
-When first calling test_backtrace, ESP = 0xf010ffdc. The next time, ESP = 0xf010ffbc. And the next time after the next time, ESP = 0xf010ff9c. Therefore, each time 2*16/4=8 32-bit words are push on the stack.
-
-**Exercise 11.** *Implement the backtrace function as specified above. Use the same format as in the example, since otherwise the grading script will be confused. When you think you have it working right, run make grade to see if its output conforms to what our grading script expects, and fix it if it doesn't. After you have handed in your Lab 1 code, you are welcome to change the output format of the backtrace function any way you like.*
-
-```c
-cprintf("Stack backtrace:\n");
-uint32_t ebp = read_ebp();
-while (ebp) {
-    cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n",
-        ebp,
-        *(uint32_t *)(ebp + 4),
-        *(uint32_t *)(ebp + 8),
-        *(uint32_t *)(ebp + 12),
-        *(uint32_t *)(ebp + 16),
-        *(uint32_t *)(ebp + 20),
-        *(uint32_t *)(ebp + 24)
-    );
-    ebp = *(uint32_t *)ebp;
+if (n > 0) {
+	n = ROUNDUP(n, PGSIZE);
+	void *res = (void *) nextfree;
+	nextfree = (char *) ((uint32_t) nextfree + n);
+	return res;
+} else if (n == 0) {
+	return (void *) nextfree;
+} else {
+	panic("call boot_alloc with negative n");
 }
 ```
 
-**Exercise 12**. *Modify your stack backtrace function to display, for each eip, the function name, source file name, and line number corresponding to that eip.*
-
-In kdebug.c:
+In `mem_init()` , I added these code to allocate memory for `pages` :
 
 ```c
-stab_binsearch(stabs, &lline, &rline, N_SLINE, addr);
-if (lline == 0) {
-    return -1;
-}
-info->eip_line = stabs[lline].n_desc;
+pages = (struct PageInfo *) boot_alloc(npages * sizeof(struct PageInfo));
+memset(pages, 0, npages * sizeof(struct PageInfo));
 ```
 
-Note that the line number is not the n_value field, but the n_desc field.
-
-In monitor.c:
+In `page_init()` , I modified the code to be:
 
 ```c
-cprintf("Stack backtrace:\n");
-uint32_t ebp = read_ebp();
-while (ebp) {
-    uint32_t eip = *(uint32_t *)(ebp + 4);
-    struct Eipdebuginfo info;
-    debuginfo_eip(eip, &info);
-    cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n",
-        ebp,
-        eip,
-        *(uint32_t *)(ebp + 8),
-        *(uint32_t *)(ebp + 12),
-        *(uint32_t *)(ebp + 16),
-        *(uint32_t *)(ebp + 20),
-        *(uint32_t *)(ebp + 24)
-    );
-    cprintf("         %s:%d: %.*s+%d\n",
-        info.eip_file,
-        info.eip_line,
-        info.eip_fn_namelen,
-        info.eip_fn_name,
-        eip - info.eip_fn_addr
-    );
-    ebp = *(uint32_t *)ebp;
+assert(page_free_list == NULL);
+physaddr_t kern_memory_end = PADDR(boot_alloc(0));  // end of kernel's memory
+for (size_t i = 0; i < npages; i++) {
+	physaddr_t pa = page2pa(pages + i);
+	// [PGSIZE, npages_basemem * PGSIZE) or (kern_memory_end, inf) 
+	if ((PGSIZE <= pa && pa < npages_basemem * PGSIZE) || (pa > kern_memory_end)) {
+		assert(i > 0);
+		pages[i].pp_ref = 0;
+		pages[i].pp_link = page_free_list;
+		page_free_list = &pages[i];
+	}
 }
 ```
 
-**Challenge**. *Enhance the console to allow text to be printed in different colors.*
+In `page_alloc()` , I wrote:
 
-1. Add a global variable in console.c
+```c
+struct PageInfo *pp = page_free_list;
+if (!pp) {
+	return NULL;
+}
+page_free_list = pp->pp_link;  // remove the first element of the free list
+pp->pp_link = NULL;
+pp->pp_ref = 0;
+if (alloc_flags & ALLOC_ZERO) {
+	memset(page2kva(pp), 0, PGSIZE);
+}
+return pp;
+```
 
-   ```c
-   int cga_text_color = 0x700;
+In `page_free()` , I wrote:
+
+```c
+assert((pp->pp_ref == 0) && (pp->pp_link == NULL));
+pp->pp_link = page_free_list;
+page_free_list = pp;  // add it to the front of the free list
+```
+
+**Exercise 2.** *Look at chapters 5 and 6 of the [Intel 80386 Reference Manual](https://pdos.csail.mit.edu/6.828/2014/readings/i386/toc.htm), if you haven't done so already. Read the sections about page translation and page-based protection closely (5.2 and 6.4). We recommend that you also skim the sections about segmentation; while JOS uses paging for virtual memory and protection, segment translation and segment-based protection cannot be disabled on the x86, so you will need a basic understanding of it.* 
+
+**Exercise 3.** *While GDB can only access QEMU's memory by virtual address, it's often useful to be able to inspect physical memory while setting up virtual memory. Review the QEMU [monitor commands](https://pdos.csail.mit.edu/6.828/2014/labguide.html#qemu) from the lab tools guide, especially the `xp` command, which lets you inspect physical memory. To access the QEMU monitor, press Ctrl-a c in the terminal (the same binding returns to the serial console).*
+
+**Question.** *Assuming that the following JOS kernel code is correct, what type should variable `x` have, `uintptr_t` or `physaddr_t`?* 
+
+```c
+mystery_t x;
+char* value = return_a_pointer();
+*value = 10;
+x = (mystery_t) value;
+```
+
+The type of `x` should be `uintptr_t` . Because `value` is a pointer, it is a virtual memory address. So, `x` should also be a virtual memory address rather than a physical memory address. Hence, it is `uintptr_t` .
+
+**Exercise 4.** *In the file `kern/pmap.c`, you must implement code for the following functions.*
+
+In `pgdir_walk()` , I wrote:
+
+```c
+pde_t *pde_ptr = pgdir + PDX(va);  // pointer to PDE
+if (!((*pde_ptr) & PTE_P)) {  // if PT not present
+	if (create) {  // create PT
+		struct PageInfo *pp = page_alloc(ALLOC_ZERO);
+		if (!pp) {
+			return NULL;
+		}
+		pp->pp_ref++;
+		*pde_ptr = PTE_P | PTE_W | PTE_U | page2pa(pp);  // create PTE
+	} else {
+		return NULL;
+	}
+}
+pte_t *pgtable = (pte_t *) KADDR(PTE_ADDR(*pde_ptr));
+return pgtable + PTX(va);  // return PTE
+```
+
+In `boot_map_region()` , I wrote:
+
+```c
+assert((va % PGSIZE == 0) && (pa % PGSIZE == 0) && (size % PGSIZE == 0));  // make sure it's aligned
+for (size_t i = 0; i < size; i += PGSIZE) {
+	pte_t *pte_ptr = pgdir_walk(pgdir, (void *)(va + i), 1);
+	*pte_ptr = (pa + i) | perm | PTE_P;  // edit PTE
+}
+```
+In `page_lookup()` , I wrote:
+
+```c
+pte_t *pte_ptr = pgdir_walk(pgdir, va, 0);  // pointer to PTE
+if (!pte_ptr || !(*pte_ptr & PTE_P)) {  // PT not present or PTE not present
+	return NULL;
+}
+if (pte_store) {
+	*pte_store = pte_ptr;
+}
+return pa2page(PTE_ADDR(*pte_ptr));
+```
+
+In `page_remove()` , I wrote:
+
+```c
+pte_t *pte_ptr;
+struct PageInfo *page_ptr = page_lookup(pgdir, va, &pte_ptr);
+if (page_ptr == NULL) {  // no such page
+	return;  // exit silently
+}
+*pte_ptr = 0;
+tlb_invalidate(pgdir, va);
+page_decref(page_ptr);
+```
+
+In `page_insert()`, I wrote:
+
+```c
+pte_t *pte_ptr = pgdir_walk(pgdir, va, 1);
+if (!pte_ptr) {  // allocate for new page table failed
+	return -E_NO_MEM;
+}
+pp->pp_ref++;  // increment ref count first
+if ((*pte_ptr) & PTE_P) {
+	page_remove(pgdir, va);
+}
+*pte_ptr = page2pa(pp) | perm | PTE_P;
+tlb_invalidate(pgdir, va);
+return 0;
+```
+
+To solve the problem that same `va` to be `page_insert()` twice, I increment `pp->pp_ref` before calling `page_remove` , so that `page_remove()` will not decrement `pp->pp_ref` to `0` and thereby it will not remove this page from the page table.
+
+**Exercise 5.** *Fill in the missing code in `mem_init()` after the call to `check_page()`.*
+
+To map the memory for user's read-only 'pages':
+
+```c
+assert(npages * sizeof(struct PageInfo) <= PTSIZE);
+boot_map_region(kern_pgdir, UPAGES, npages * sizeof(struct PageInfo), PADDR(pages), PTE_U);
+```
+
+To map the memory for the kernel stack:
+
+```c
+boot_map_region(kern_pgdir, KSTACKTOP - KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
+```
+
+To map the memory above `KERNBASE` :
+
+```c
+boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, PTE_W);
+// note that for uint32, -KERNBASE == 2^32 - KERNBASE
+```
+
+**Question.**
+
+1. *What entries (rows) in the page directory have been filled in at this point? What addresses do they map and where do they point? In other words, fill out this table as much as possible:*
+
+   - 957-th entry, `0xEF400000` , points to the page directory (UVPT)
+   - 956-th entry, `0xEF000000` , points to the page table of user's read-only image of `pages` array
+   - 959-th entry, `0xEFF00000` , points to the page table containing the kernel stack
+   - 960-th entry to 1023-th entry, `0xF0000000` to `0xFFC00000` , points to the page table for bottom `4MB` to top `4MB` of physical memory
+
+2. *We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?*
+
+   Because we set the permission bits in the PTE. When `PTE_U` is unset, users cannot read or write the memory in this page; when `PTE_U` is set but `PTE_W` is unset, this virtual page is read-only.
+
+3. *What is the maximum amount of physical memory that this operating system can support? Why?*
+
+   If the total physical memory is `m` (in bytes)
+
+   Because `totalmem` is in `KB`, so `m = totalmem * 1024` .
+
+   The space between `UPAGES` and `UVPT` is `PTSIZE = 4MB` , i.e. only `4MB` of `pages` is mapped. So,
+
+   `npages * sizeof(struct PageInfo) = totalmem / (PGSIZE / 1024) * sizeof(struct PageInfo) = totalmem / 4 * 8 <= 4MB`
+
+   Therefore, `m / 1024 / 4 * 8 <= 4MB`, i.e. `m <= 2048MB = 2GB`
+
+4. *How much space overhead is there for managing memory, if we actually had the maximum amount of physical memory? How is this overhead broken down?*
+
+   The `pages` data structure (free list) occupies `ROUND(totalmem / (PGSIZE / 1024) * sizeof(struct PageInfo), PGSIZE) = ROUND(totalmem / 4 * 8, PGSIZE)` . 
+
+   `totalmem` can be at most `2097152`, so the overhead here is at most `4194304B = 4MB` .
+
+   `kern_pgdir` occupies 1 page, which is `4096` bytes.
+
+   When all page tables is full, there are `1024` page tables, so the overhead here is `1024 * 4K = 4MB`
+
+   So the total overhead is at most `4MB + 4KB + 4MB = 8196KB`
+
+5. *Revisit the page table setup in `kern/entry.S` and `kern/entrypgdir.c`. Immediately after we turn on paging, EIP is still a low number (a little over 1MB). At what point do we transition to running at an EIP above KERNBASE? What makes it possible for us to continue executing at a low EIP between when we enable paging and when we begin running at an EIP above KERNBASE? Why is this transition necessary?*
+
+   In `entry.S`,
+
+   ```assembly
+   movl $(RELOC(entry_pgdir)), %eax
+   movl %eax, %cr3
    ```
 
-2. Use this color in cga_putc() function in console.c
+   It sets the page directory base register (PDBR) `CR3` to `entry_pgdir`, and make it the page directory. It maps both low addresses and high addresses to the same physical memory. 
 
-   ```c
-   if (!(c & ~0xFF))
-       c |= cga_text_color;
+   ```javascript
+   mov $relocated, %eax
+   jmp *%eax
    ```
 
-3. Reference to cga_text_color variable in printfmt.c
+   Jumps to high addresses.
 
-   ```c
-   extern int cga_text_color;
-   ```
+   This transition is necessary because we will use our `kern_pgdir` defined in this lab instead of `entry_pgdir` later. In `kern_pgdir` , the low memory is no longer mapped to the lowest `4MB` of the virtual address space.
 
-4. Add a branch to process color. Here we use %m as the symbol for colors
+**Challenge 2.** *Extend the JOS kernel monitor with commands to:*
 
-   ```c
-   // color
-   case 'm':
-       num = getint(&ap, lflag);
-       cga_text_color = num;
-       break;
-   ```
+- *Display in a useful and easy-to-read format all of the physical page mappings (or lack thereof) that apply to a particular range of virtual/linear addresses in the currently active address space.* 
 
-5. When encountered the end of a string, reset the color to white: 
+  I wrote two helper functions in `monitor.c` :
 
-   ```c
-   if (ch == '\0') {
-       cga_text_color = 0x700;
-       return;
-   }
-   ```
+  ```c
+  uintptr_t hex_2_ptr(char *s) {
+  	if (s[0] == '0' && s[1] == 'x') {
+  		s += 2;
+  	}
+  	uintptr_t res = 0;
+  	for (; *s; ++s) {
+  		if ('0' <= *s && *s <= '9') {
+  			res = res * 16 + (*s) - '0';
+  		} else if ('a' <= *s && *s <= 'f') {
+  			res = res * 16 + (*s) - 'a' + 10;
+  		} else if ('A' <= *s && *s <= 'F') {
+  			res = res * 16 + (*s) - 'A' + 10;
+  		} else {
+  			panic("invalid input hex address");
+  		}
+  	}
+  	return res;
+  }
+  
+  // pretty print of a PTE
+  void print_pte(pte_t pte) {
+  	if (pte & PTE_P) {
+  		cprintf(
+  			"%08x %c %s P\n",
+  			PTE_ADDR(pte),
+  			(pte & PTE_U) ? 'U' : 'S',
+  			(pte & PTE_W) ? "RW" : "R-"
+  		);
+  	} else {
+  		cprintf("00000000 - -- -\n");
+  	}
+  }
+  ```
 
-6. Print one line to test color functionalities in monitor.c 
+  Then I wrote `mon_showmapping` :
 
-   ```c
-   cprintf("Test colors: %mRed %mGreen %mBlue\n", 0x100, 0x200, 0x400);
-   ```
+  ```c
+  int mon_showmapping(int argc, char **argv, struct Trapframe *tf) {
+  	assert(argc == 3);
+  	uintptr_t adr_0 = ROUNDDOWN(hex_2_ptr(argv[1]), PGSIZE), adr_1 = ROUNDDOWN(hex_2_ptr(argv[2]), PGSIZE);
+  	for (uintptr_t i = adr_0; i <= adr_1; i += PGSIZE) {
+  		pte_t *pte_ptr = pgdir_walk(kern_pgdir, (void *) i, 0);
+  		if (pte_ptr) {
+  			cprintf("%08x ", i);
+  			print_pte(*pte_ptr);
+  		}
+  	}
+  	return 0;
+  }
+  ```
 
-   
+  It takes 2 arguments `adr_0` and `adr_1` , and prints virtual memory mapping between these two addresses.
+
+  To make `pgdir_walk` work, I had to include a header file:
+
+  ```c
+  #include <kern/pmap.h>
+  ```
+
+  Then, register this monitor command. in `monitor.h` :
+
+  ```c
+  int mon_showmapping(int argc, char **argv, struct Trapframe *tf);
+  ```
+
+  In `monitor.c` :
+
+  ```c
+  static struct Command commands[] = {
+  	{ "help", "Display this list of commands", mon_help },
+  	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+  	{ "showmapping", "Display memory mapping of adr_0 to adr_1", mon_showmapping }
+  };
+  ```
+
+  Result:
+
+  ```
+  K> showmapping 0xf011a000 0xf012a000
+  f011a000 0011a000 S RW P
+  f011b000 0011b000 S RW P
+  f011c000 0011c000 S RW P
+  f011d000 0011d000 S RW P
+  f011e000 0011e000 S RW P
+  f011f000 0011f000 S RW P
+  f0120000 00120000 S RW P
+  f0121000 00121000 S RW P
+  f0122000 00122000 S RW P
+  f0123000 00123000 S RW P
+  f0124000 00124000 S RW P
+  f0125000 00125000 S RW P
+  f0126000 00126000 S RW P
+  f0127000 00127000 S RW P
+  f0128000 00128000 S RW P
+  f0129000 00129000 S RW P
+  f012a000 0012a000 S RW P
+  K> showmapping 0xef000000 0xef400000
+  ef000000 00119000 U R- P
+  ef001000 0011a000 U R- P
+  ef002000 0011b000 U R- P
+  ef003000 0011c000 U R- P
+  ef004000 0011d000 U R- P
+  ef005000 0011e000 U R- P
+  ef006000 0011f000 U R- P
+  ef007000 00120000 U R- P
+  ef008000 00121000 U R- P
+  ef009000 00122000 U R- P
+  ef00a000 00123000 U R- P
+  ef00b000 00124000 U R- P
+  ef00c000 00125000 U R- P
+  ef00d000 00126000 U R- P
+  ef00e000 00127000 U R- P
+  ef00f000 00128000 U R- P
+  ef010000 00129000 U R- P
+  ef011000 0012a000 U R- P
+  ef012000 0012b000 U R- P
+  ef013000 0012c000 U R- P
+  ef014000 0012d000 U R- P
+  ef015000 0012e000 U R- P
+  ef016000 0012f000 U R- P
+  ef017000 00130000 U R- P
+  ef018000 00131000 U R- P
+  ef019000 00132000 U R- P
+  ef01a000 00133000 U R- P
+  ef01b000 00134000 U R- P
+  ef01c000 00135000 U R- P
+  ef01d000 00136000 U R- P
+  ef01e000 00137000 U R- P
+  ef01f000 00138000 U R- P
+  ef020000 00139000 U R- P
+  ef021000 0013a000 U R- P
+  ef022000 0013b000 U R- P
+  ef023000 0013c000 U R- P
+  ef024000 0013d000 U R- P
+  ef025000 0013e000 U R- P
+  ef026000 0013f000 U R- P
+  ef027000 00140000 U R- P
+  ef028000 00141000 U R- P
+  ef029000 00142000 U R- P
+  ef02a000 00143000 U R- P
+  ef02b000 00144000 U R- P
+  ef02c000 00145000 U R- P
+  ef02d000 00146000 U R- P
+  ef02e000 00147000 U R- P
+  ef02f000 00148000 U R- P
+  ef030000 00149000 U R- P
+  ef031000 0014a000 U R- P
+  ef032000 0014b000 U R- P
+  ef033000 0014c000 U R- P
+  ef034000 0014d000 U R- P
+  ef035000 0014e000 U R- P
+  ef036000 0014f000 U R- P
+  ef037000 00150000 U R- P
+  ef038000 00151000 U R- P
+  ef039000 00152000 U R- P
+  ef03a000 00153000 U R- P
+  ef03b000 00154000 U R- P
+  ef03c000 00155000 U R- P
+  ef03d000 00156000 U R- P
+  ef03e000 00157000 U R- P
+  ef03f000 00158000 U R- P
+  ef040000 00000000 - -- -
+  ef041000 00000000 - -- -
+  ef042000 00000000 - -- -
+  ...
+  ```
+
+- *Explicitly set, clear, or change the permissions of any mapping in the current address space.*
+
+  ```c
+  int mon_setmapping(int argc, char **argv, struct Trapframe *tf) {
+  	assert(argc == 5);
+  	uintptr_t addr = ROUNDDOWN(hex_2_ptr(argv[1]), PGSIZE);
+  	pte_t pte_u = argv[2][0] == 'U' ? PTE_U : 0,
+  		  pte_w = argv[3][1] == 'W' ? PTE_W : 0,
+  		  pte_p = argv[4][0] == 'P' ? PTE_P : 0;
+  	pte_t *pte_ptr = pgdir_walk(kern_pgdir, (void *) addr, 1);
+  	if (pte_ptr) {
+  		*pte_ptr = PTE_ADDR(*pte_ptr) | pte_u | pte_w | pte_p;
+  		cprintf("%08x ", addr);
+  		print_pte(*pte_ptr);
+  	} else {
+  		panic("no enough memory for the page table");
+  	}
+  	return 0;
+  }
+  ```
+
+  Result:
+
+  ```
+  K> showmapping 0xef000000 0xef000000
+  ef000000 00119000 U R- P
+  K> setmapping 0xef000000 S RW P
+  ef000000 00119000 S RW P
+  K> showmapping 0xef000000 0xef000000
+  ef000000 00119000 S RW P
+  ```
+
+- *Dump the contents of a range of memory given either a virtual or physical address range. Be sure the dump code behaves correctly when the range extends across page boundaries!*
+
+  Code:
+
+  ```c
+  int mon_dumpmemory(int argc, char **argv, struct Trapframe *tf) {
+  	assert(argc == 4);
+  	uintptr_t vaddr_0, vaddr_1;
+  	if (argv[1][0] == 'V') {
+  		vaddr_0 = ROUNDDOWN(hex_2_ptr(argv[2]), 4);
+  		vaddr_1 = ROUNDDOWN(hex_2_ptr(argv[3]), 4);
+  	} else if (argv[1][0] == 'P') {
+  		vaddr_0 = (uintptr_t) KADDR(ROUNDDOWN(hex_2_ptr(argv[2]), 4));
+  		vaddr_1 = (uintptr_t) KADDR(ROUNDDOWN(hex_2_ptr(argv[3]), 4));
+  	} else {
+  		panic("the first argument should be V or P");
+  	}
+  	for (uintptr_t i = vaddr_0; i <= vaddr_1; i += 4) {
+  		cprintf("%08x: %08x\n", i, *((uint32_t *) i));
+  	}
+  	return 0;
+  }
+  ```
+
+  Result:
+
+  ```
+  K> dumpmemory V 0xef000000 0xef000010
+  ef000000: 00000000
+  ef000004: 00000000
+  ef000008: f0158ff8
+  ef00000c: 00000000
+  ef000010: f0119008
+  K> showmapping 0xef000000 0xef000010
+  ef000000 00119000 U R- P
+  K> dumpmemory P 0x00119000 0x00119010
+  f0119000: 00000000
+  f0119004: 00000000
+  f0119008: f0158ff8
+  f011900c: 00000000
+  f0119010: f0119008
+  ```
