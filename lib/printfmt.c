@@ -8,7 +8,7 @@
 #include <inc/stdarg.h>
 #include <inc/error.h>
 
-extern int cga_text_color;
+int cga_text_color;
 
 /*
  * Space or zero padding and a field width are supported for the numeric
