@@ -55,14 +55,17 @@
 	TRAPHANDLER_NOEC(handle_illop, T_ILLOP)
 	TRAPHANDLER_NOEC(handle_device, T_DEVICE)
 	TRAPHANDLER(handle_dblflt, T_DBLFLT)
-	/* TRAPHANDLER_NOEC(handle_coproc, T_COPROC) */
+	TRAPHANDLER_NOEC(handle_coproc, 9)
 	TRAPHANDLER(handle_tss, T_TSS)
 	TRAPHANDLER(handle_segnp, T_SEGNP)
 	TRAPHANDLER(handle_stack, T_STACK)
 	TRAPHANDLER(handle_gpflt, T_GPFLT)
 	TRAPHANDLER(handle_pgflt, T_PGFLT)
-	/* TRAPHANDLER(handle_res, T_RES) */
+	TRAPHANDLER(handle_res, 15)
 	TRAPHANDLER_NOEC(handle_fperr, T_FPERR)
+	TRAPHANDLER_NOEC(handle_align, T_ALIGN)
+	TRAPHANDLER_NOEC(handle_mchk, T_MCHK)
+	TRAPHANDLER_NOEC(handle_simderr, T_SIMDERR)
 
 
 /*
@@ -79,3 +82,28 @@ _alltraps:
 	popl	%es
 	pushl	%esp
 	call	trap
+
+
+.data
+.global idt_entries
+idt_entries:
+	.long handle_divide
+	.long handle_debug
+	.long handle_nmi
+	.long handle_brkpt
+	.long handle_oflow
+	.long handle_bound
+	.long handle_illop
+	.long handle_device
+	.long handle_dblflt
+	.long handle_coproc
+	.long handle_tss
+	.long handle_segnp
+	.long handle_stack
+	.long handle_gpflt
+	.long handle_pgflt
+	.long handle_res
+	.long handle_fperr
+	.long handle_align
+	.long handle_mchk
+	.long handle_simderr
