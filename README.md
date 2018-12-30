@@ -411,3 +411,23 @@ thisenv = envs + ENVX(sys_getenvid());
   	return -1;
   }
   ```
+
+**Exercise 10.** *Boot your kernel, running `user/evilhello`. The environment should be destroyed, and the kernel should not panic.*
+
+I run `evilhello` with
+
+```
+make run-evilhello
+```
+
+And the qemu outputs:
+
+```
+[00000000] new env 00001000
+Incoming TRAP frame at 0xefffffbc
+Incoming TRAP frame at 0xefffffbc
+[00001000] user_mem_check assertion failure for va f010000c
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
+```
+

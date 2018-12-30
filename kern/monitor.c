@@ -12,6 +12,7 @@
 #include <kern/kdebug.h>
 #include <kern/trap.h>
 #include <kern/pmap.h>
+#include <kern/env.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -28,7 +29,9 @@ static struct Command commands[] = {
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "showmapping", "Display memory mapping of adr_0 to adr_1", mon_showmapping },
 	{ "setmapping", "Set the bits on the PTE", mon_setmapping },
-	{ "dumpmemory", "Display a range of physical or virtual memory", mon_dumpmemory }
+	{ "dumpmemory", "Display a range of physical or virtual memory", mon_dumpmemory },
+	{ "continue", "Continue running", mon_continue },
+	{ "stepi", "step to the next instruction", mon_stepi }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -233,5 +236,19 @@ int mon_dumpmemory(int argc, char **argv, struct Trapframe *tf) {
 	for (uintptr_t i = vaddr_0; i <= vaddr_1; i += 4) {
 		cprintf("%08x: %08x\n", i, *((uint32_t *) i));
 	}
+	return 0;
+}
+
+int mon_continue(int argc, char **argv, struct Trapframe *tf) {
+	assert(tf && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG));
+	tf->tf_eflags &= ~0x100;  // clear the trap flag
+	env_run(curenv);
+	return 0;
+}
+
+int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
+	assert(tf && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG));
+	tf->tf_eflags |= 0x100;  // set the trap flag
+	env_run(curenv);
 	return 0;
 }
