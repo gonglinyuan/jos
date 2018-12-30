@@ -69,12 +69,11 @@
  * Lab 3: Your code here for _alltraps
  */
 
-._alltraps
-
+_alltraps:
 	pushl	%ds
 	pushl	%es
 	pushal
-	movl	$GD_KD, $ds
-	movl	$GD_KD, $es
+	movl	$GD_KD, %ds
+	movl	$GD_KD, %es
 	pushl	%esp
 	call	trap
