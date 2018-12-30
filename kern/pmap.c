@@ -555,13 +555,13 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 	const void *va_end = va + len;
 	for (void *i = ROUNDDOWN((void *) va, PGSIZE); i < va_end; i += PGSIZE) {
 		if ((uintptr_t) i >= ULIM) {
-			user_mem_check_addr = (uintptr_t) MIN(i, va);
+			user_mem_check_addr = (uintptr_t) MAX(i, va);
 			return -E_FAULT;
 		}
 		pte_t *pte_ptr;
 		struct PageInfo *pp = page_lookup(env->env_pgdir, i, &pte_ptr);
 		if (!pp || ((perm & (*pte_ptr)) != perm)) {  // perm in pte
-			user_mem_check_addr = (uintptr_t) MIN(i, va);
+			user_mem_check_addr = (uintptr_t) MAX(i, va);
 			return -E_FAULT;
 		}
 	}
