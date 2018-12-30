@@ -66,6 +66,8 @@
 	TRAPHANDLER_NOEC(handle_align, T_ALIGN)
 	TRAPHANDLER_NOEC(handle_mchk, T_MCHK)
 	TRAPHANDLER_NOEC(handle_simderr, T_SIMDERR)
+	
+	TRAPHANDLER_NOEC(handle_syscall, T_SYSCALL)
 
 
 /*

@@ -263,3 +263,84 @@ if (tf->tf_trapno == T_PGFLT) {
 }
 ```
 
+**Exercise 6.** *Modify `trap_dispatch()` to make breakpoint exceptions invoke the kernel monitor. You should now be able to get make grade to succeed on the `breakpoint` test.*
+
+In `trap_dispatch()`, I added code:
+
+```c
+} else if (tf->tf_trapno == T_BRKPT) {
+	monitor(tf);
+	return;
+}
+```
+
+To make it callable from user-mode apps, I modified code in `trap_init()` as:
+
+```c
+for (int i = 0; i < 20; ++i) {
+	if (i == T_BRKPT) {
+		SETGATE(idt[i], 0, GD_KT, idt_entries[i], 3);
+	} else {  // privileged
+		SETGATE(idt[i], 0, GD_KT, idt_entries[i], 0);
+	}
+}
+```
+
+**Questions 2.**
+
+1. *The break point test case will either generate a break point exception or a general protection fault depending on how you initialized the break point entry in the IDT (i.e., your call to`SETGATE` from `trap_init`). Why? How do you need to set it up in order to get the breakpoint exception to work as specified above and what incorrect setup would cause it to trigger a general protection fault?*
+
+   If we pass `0` as `dpl` (privilege level) when calling `SETGATE`, the test case will generate a general protection fault because user-mode apps have no permission to execute `int 03h`. So we modified `dpl` to be `3`, then user-mode apps can enter the trap handler of break point exception correctly.
+
+2. *What do you think is the point of these mechanisms, particularly in light of what the `user/softint` test program does?*
+
+   Because there are protections that prevent user-mode apps from arbitrarily invoking trap handlers in the kernel.
+
+**Exercise 7.** *Add a handler in the kernel for interrupt vector `T_SYSCALL`. Finally, you need to implement `syscall()` in `kern/syscall.c`. Handle all the system calls listed in `inc/syscall.h` by invoking the corresponding kernel function for each call.*
+
+In `trapentry.S`, I added code:
+
+```assembly
+TRAPHANDLER_NOEC(handle_syscall, T_SYSCALL)
+```
+
+In `trap_init()` of `trap.c`, I added code:
+
+```c
+extern void handle_syscall();
+SETGATE(idt[T_SYSCALL], 1, GD_KT, handle_syscall, 3);
+```
+
+In `trap_dispatch()` of `trap.c`, I added code:
+
+```c
+} else if (tf->tf_trapno == T_SYSCALL) {
+	tf->tf_regs.reg_eax = syscall(
+		tf->tf_regs.reg_eax,  // number
+		tf->tf_regs.reg_edx,  // arg 1
+		tf->tf_regs.reg_ecx,  // arg 2
+		tf->tf_regs.reg_ebx,  // arg 3
+		tf->tf_regs.reg_edi,  // arg 4
+		tf->tf_regs.reg_esi  // arg 5
+	);
+}
+```
+
+I modified `syscall()` in `syscall.c` to be:
+
+```c
+switch (syscallno) {
+case SYS_cputs:
+	sys_cputs((const char *) a1, a2);
+	return 0;
+case SYS_cgetc:
+	return sys_cgetc();
+case SYS_getenvid:
+	return sys_getenvid();
+case SYS_env_destroy:
+	return sys_env_destroy(a1);
+default:
+	return -E_INVAL;
+}
+```
+
