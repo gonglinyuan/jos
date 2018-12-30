@@ -201,7 +201,7 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
   SETGATE(idt[T_FPERR], 0, GD_KT, handle_fperr, 0);
   ```
 
-**Challenge.** *You probably have a lot of very similar code right now, between the lists of `TRAPHANDLER` in `trapentry.S` and their installations in `trap.c`. Clean this up. Change the macros in`trapentry.S` to automatically generate a table for `trap.c` to use.*
+**Challenge 1.** *You probably have a lot of very similar code right now, between the lists of `TRAPHANDLER` in `trapentry.S` and their installations in `trap.c`. Clean this up. Change the macros in`trapentry.S` to automatically generate a table for `trap.c` to use.*
 
 In `trapentry.S`, I added code:
 
@@ -242,7 +242,7 @@ for (int i = 0; i < 20; ++i) {
 
 and eliminated duplicate codes.
 
-**Questions.**
+**Questions 1.**
 
 1. *What is the purpose of having an individual handler function for each exception/interrupt? (i.e., if all exceptions/interrupts were delivered to the same handler, what feature that exists in the current implementation could not be provided?)*
 
