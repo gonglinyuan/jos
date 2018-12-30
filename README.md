@@ -345,3 +345,11 @@ default:
 }
 ```
 
+**Exercise 8.** *Add the required code to the user library, then boot your kernel. You should see `user/hello` print "`hello, world`" and then print "`i am environment 00001000`". `user/hello` then attempts to "exit" by calling `sys_env_destroy()` (see `lib/libmain.c` and `lib/exit.c`).*
+
+In `libmain()`, I added code:
+
+```c
+thisenv = envs + ENVX(sys_getenvid());
+```
+
