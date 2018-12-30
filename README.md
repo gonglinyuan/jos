@@ -286,6 +286,136 @@ for (int i = 0; i < 20; ++i) {
 }
 ```
 
+**Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
+
+First, I added two monitor commands: `continue` and `stepi`.
+
+In `monitor.h`, I added code:
+
+```c
+int mon_continue(int argc, char **argv, struct Trapframe *tf);
+int mon_stepi(int argc, char **argv, struct Trapframe *tf);
+```
+
+In `monitor.c`, I added code:
+
+```c
+#include <kern/env.h>
+```
+
+and
+
+```c
+{ "continue", "Continue running", mon_continue },
+{ "stepi", "step to the next instruction", mon_stepi }
+```
+
+and their definitions:
+
+```c
+int mon_continue(int argc, char **argv, struct Trapframe *tf) {
+	assert(tf && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG));
+	tf->tf_eflags &= ~0x100;  // clear the trap flag
+	env_run(curenv);
+	return 0;
+}
+
+int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
+	assert(tf && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG));
+	tf->tf_eflags |= 0x100;  // set the trap flag
+	env_run(curenv);
+	return 0;
+}
+```
+
+If the trap flag in `EFLAGS` is set, the processor will interrupt after executing the next instruction with `T_DEBUG`.
+
+Then, I added trap handler for `T_DEBUG`:
+
+In `trap_dispatch()` in `trap.c`, I modified the code to be:
+
+```c
+} else if (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG) {
+	monitor(tf);
+	return;
+}
+```
+
+I tested my tiny debugger using `breakpoint` program. I run `make run-breakpoint-nox`, and the output is:
+
+```
+check_page_free_list() succeeded!
+check_page_alloc() succeeded!
+check_page() succeeded!
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!                                                                                          [40/1896]
+[00000000] new env 00001000
+Incoming TRAP frame at 0xefffffbc
+Incoming TRAP frame at 0xefffffbc
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+TRAP frame at 0xf01c0000
+  edi  0x00000000
+  esi  0x00000000
+  ebp  0xeebfdfd0
+  oesp 0xefffffdc
+  ebx  0x00000000
+  edx  0x00000000
+  ecx  0x00000000
+  eax  0xeec00000
+  es   0x----0023
+  ds   0x----0023
+  trap 0x00000003 Breakpoint
+  err  0x00000000
+  eip  0x00800037
+  cs   0x----001b
+  flag 0x00000082
+  esp  0xeebfdfd0
+  ss   0x----0023
+K> 
+```
+
+I typed `stepi` to let it execute the next instruction and stop:
+
+```
+K> stepi                                              
+Incoming TRAP frame at 0xefffffbc
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+TRAP frame at 0xf01c0000
+  edi  0x00000000
+  esi  0x00000000
+  ebp  0xeebfdff0
+  oesp 0xefffffdc
+  ebx  0x00000000
+  edx  0x00000000
+  ecx  0x00000000
+  eax  0xeec00000
+  es   0x----0023
+  ds   0x----0023
+  trap 0x00000001 Debug
+  err  0x00000000
+  eip  0x00800038
+  cs   0x----001b
+  flag 0x00000182
+  esp  0xeebfdfd4
+  ss   0x----0023
+K>   
+```
+
+Then, I typed `continue` to let it continue running:
+
+```
+K> continue
+Incoming TRAP frame at 0xefffffbc
+[00001000] exiting gracefully
+[00001000] free env 00001000
+Destroyed the only environment - nothing more to do!
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+```
+
 **Questions 2.**
 
 1. *The break point test case will either generate a break point exception or a general protection fault depending on how you initialized the break point entry in the IDT (i.e., your call to`SETGATE` from `trap_init`). Why? How do you need to set it up in order to get the breakpoint exception to work as specified above and what incorrect setup would cause it to trigger a general protection fault?*
