@@ -353,3 +353,61 @@ In `libmain()`, I added code:
 thisenv = envs + ENVX(sys_getenvid());
 ```
 
+**Exercise 9.** 
+
+- *Change `kern/trap.c` to panic if a page fault happens in kernel mode.*
+
+  In `page_fault_handler()`, I added code:
+
+  ```c
+  if ((tf->tf_cs & 0x3) == 0) {  // the last 2 bits of CS is the DPL
+  	panic("kernel page fault");
+  }
+  ```
+
+- *Read `user_mem_assert` in `kern/pmap.c` and implement `user_mem_check` in that same file.*
+
+  In `user_mem_check()`, I added code:
+
+  ```c
+  const void *va_end = va + len;
+  for (void *i = ROUNDDOWN(va, PGSIZE); i < va_end; i += PGSIZE) {
+  	if (i >= ULIM) {
+  		user_mem_check_addr = (uintptr_t) MIN(i, va);
+  		return -E_FAULT;
+  	}
+  	pte_t *pte_ptr;
+  	struct PageInfo *pp = page_lookup(env->env_pgdir, i, &pte_ptr);
+  	if (!pp || ((perm & (*pte_ptr)) != perm)) {  // perm in pte
+  		user_mem_check_addr = (uintptr_t) MIN(i, va);
+  		return -E_FAULT;
+  	}
+  }
+  ```
+
+- *Change `kern/syscall.c` to sanity check arguments to system calls.*
+
+  In `sys_cputs()`, I added code:
+
+  ```c
+  user_mem_assert(curenv, (const void *) s, len, PTE_U);
+  ```
+
+- *Finally, change `debuginfo_eip` in `kern/kdebug.c` to call `user_mem_check` on `usd`, `stabs`, and `stabstr`.*
+
+  In `debuginfo_eip()`, I added code:
+
+  ```c
+  if (user_mem_check(curenv, (const void *) addr, sizeof(struct UserStabData), PTE_U)) {
+  	return -1;
+  }
+  ```
+
+  and
+
+  ```c
+  if (user_mem_check(curenv, (const void *) stabs, ((uintptr_t) stab_end) - ((uintptr_t) stabs), PTE_U) ||
+  	user_mem_check(curenv, (const void *) stabstr, ((uintptr_t) stabstr_end) - ((uintptr_t) stabstr), PTE_U)) {
+  	return -1;
+  }
+  ```
