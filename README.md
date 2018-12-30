@@ -201,4 +201,65 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
   SETGATE(idt[T_FPERR], 0, GD_KT, handle_fperr, 0);
   ```
 
+**Challenge.** *You probably have a lot of very similar code right now, between the lists of `TRAPHANDLER` in `trapentry.S` and their installations in `trap.c`. Clean this up. Change the macros in`trapentry.S` to automatically generate a table for `trap.c` to use.*
+
+In `trapentry.S`, I added code:
+
+```assembly
+.data
+.global idt_entries
+idt_entries:
+	.long handle_divide
+	.long handle_debug
+	.long handle_nmi
+	.long handle_brkpt
+	.long handle_oflow
+	.long handle_bound
+	.long handle_illop
+	.long handle_device
+	.long handle_dblflt
+	.long handle_coproc
+	.long handle_tss
+	.long handle_segnp
+	.long handle_stack
+	.long handle_gpflt
+	.long handle_pgflt
+	.long handle_res
+	.long handle_fperr
+	.long handle_align
+	.long handle_mchk
+	.long handle_simderr
+```
+
+I modified `trap_init()` to be:
+
+```c
+extern uint32_t idt_entries[];
+for (int i = 0; i < 20; ++i) {
+	SETGATE(idt[i], 0, GD_KT, idt_entries[i], 0);
+}
+```
+
+and eliminated duplicate codes.
+
+**Questions.**
+
+1. *What is the purpose of having an individual handler function for each exception/interrupt? (i.e., if all exceptions/interrupts were delivered to the same handler, what feature that exists in the current implementation could not be provided?)*
+
+   If we use an individual handler function for each exception/interrupt, we can safely let user apps deal with some of the exceptions and disallow user apps to catch other exceptions. Therefore, it is easier to provide protections.
+
+2. *Did you have to do anything to make the `user/softint` program behave correctly? The grade script expects it to produce a general protection fault (trap 13), but `softint`'s code says`int $14`. Why should this produce interrupt vector 13? What happens if the kernel actually allows `softint`'s `int $14` instruction to invoke the kernel's page fault handler (which is interrupt vector 14)?*
+
+   The `int 14` produces interrupt vector 13 because the DPL for page fault handler is 0 (kernel privileged). So when CPU finds out that the user is calling `int 14`, it will trigger the general protection fault, which gives a trap number 13.
+
+**Exercise 5.** *Modify `trap_dispatch()` to dispatch page fault exceptions to `page_fault_handler()`.*
+
+In `trap_dispatch()`, I added code:
+
+```c
+if (tf->tf_trapno == T_PGFLT) {
+	page_fault_handler(tf);
+	return;
+}
+```
 
