@@ -323,6 +323,7 @@ In `trap_dispatch()` of `trap.c`, I added code:
 		tf->tf_regs.reg_edi,  // arg 4
 		tf->tf_regs.reg_esi  // arg 5
 	);
+    return;
 }
 ```
 

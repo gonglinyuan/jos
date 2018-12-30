@@ -170,6 +170,7 @@ trap_dispatch(struct Trapframe *tf)
 			tf->tf_regs.reg_edi,  // arg 4
 			tf->tf_regs.reg_esi  // arg 5
 		);
+		return;
 	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
