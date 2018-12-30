@@ -114,4 +114,32 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
   env_pop_tf(&e->env_tf);
   ```
 
+**Exercise 3.** *Read Chapter 9, Exceptions and Interrupts in the 80386 Programmer's Manual (or Chapter 5 of the IA-32 Developer's Manual), if you haven't already.*
+
+**Exercise 4.** *Edit `trapentry.S` and `trap.c` and implement the features described above.*
+
+- *You will need to add an entry point in `trapentry.S` (using those macros) for each trap defined in `inc/trap.h`*
+
+  In `trapentry.S` I added code:
+
+  ```assembly
+  TRAPHANDLER_NOEC(handle_divide, T_DIVIDE)
+  TRAPHANDLER_NOEC(handle_debug, T_DEBUG)
+  TRAPHANDLER_NOEC(handle_nmi, T_NMI)
+  TRAPHANDLER_NOEC(handle_brkpt, T_BRKPT)
+  TRAPHANDLER_NOEC(handle_oflow, T_OFLOW)
+  TRAPHANDLER_NOEC(handle_bound, T_BOUND)
+  TRAPHANDLER_NOEC(handle_illop, T_ILLOP)
+  TRAPHANDLER_NOEC(handle_device, T_DEVICE)
+  TRAPHANDLER(handle_dblflt, T_DBLFLT)
+  /* TRAPHANDLER_NOEC(handle_coproc, T_COPROC) */
+  TRAPHANDLER(handle_tss, T_TSS)
+  TRAPHANDLER(handle_segnp, T_SEGNP)
+  TRAPHANDLER(handle_stack, T_STACK)
+  TRAPHANDLER(handle_gpflt, T_GPFLT)
+  TRAPHANDLER(handle_pgflt, T_PGFLT)
+  /* TRAPHANDLER(handle_res, T_RES) */
+  TRAPHANDLER_NOEC(handle_fperr, T_FPERR)
+  ```
+
 

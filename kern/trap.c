@@ -66,6 +66,42 @@ trap_init(void)
 
 	// LAB 3: Your code here.
 
+	void handle_divide();
+	void handle_debug();
+	void handle_nmi();
+	void handle_brkpt();
+	void handle_oflow();
+	void handle_bound();
+	void handle_illop();
+	void handle_device();
+	void handle_dblflt();
+	/* void handle_coproc(); */
+	void handle_tss();
+	void handle_segnp();
+	void handle_stack();
+	void handle_gpflt();
+	void handle_pgflt();
+	/* void handle_res(); */
+	void handle_fperr();
+
+	SETGATE(idt[T_DIVIDE], 0, GD_KT, handle_divide, 0);
+	SETGATE(idt[T_DEBUG], 0, GD_KT, handle_debug, 0);
+	SETGATE(idt[T_NMI], 0, GD_KT, handle_nmi, 0);
+	SETGATE(idt[T_BRKPT], 0, GD_KT, handle_brkpt, 0);
+	SETGATE(idt[T_OFLOW], 0, GD_KT, handle_oflow, 0);
+	SETGATE(idt[T_BOUND], 0, GD_KT, handle_bound, 0);
+	SETGATE(idt[T_ILLOP], 0, GD_KT, handle_illop, 0);
+	SETGATE(idt[T_DEVICE], 0, GD_KT, handle_device, 0);
+	SETGATE(idt[T_DBLFLT], 0, GD_KT, handle_dblflt, 0);
+	/* SETGATE(idt[T_COPROC], 0, GD_KT, handle_coproc, 0); */
+	SETGATE(idt[T_TSS], 0, GD_KT, handle_tss, 0);
+	SETGATE(idt[T_SEGNP], 0, GD_KT, handle_segnp, 0);
+	SETGATE(idt[T_STACK], 0, GD_KT, handle_stack, 0);
+	SETGATE(idt[T_GPFLT], 0, GD_KT, handle_gpflt, 0);
+	SETGATE(idt[T_PGFLT], 0, GD_KT, handle_pgflt, 0);
+	/* SETGATE(idt[T_RES], 0, GD_KT, handle_res, 0); */
+	SETGATE(idt[T_FPERR], 0, GD_KT, handle_fperr, 0);
+
 	// Per-CPU setup 
 	trap_init_percpu();
 }
