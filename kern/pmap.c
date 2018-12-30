@@ -553,8 +553,8 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
 	const void *va_end = va + len;
-	for (void *i = ROUNDDOWN(va, PGSIZE); i < va_end; i += PGSIZE) {
-		if (i >= ULIM) {
+	for (void *i = ROUNDDOWN((void *) va, PGSIZE); i < va_end; i += PGSIZE) {
+		if ((uintptr_t) i >= ULIM) {
 			user_mem_check_addr = (uintptr_t) MIN(i, va);
 			return -E_FAULT;
 		}
