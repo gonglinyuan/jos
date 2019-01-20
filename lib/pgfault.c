@@ -44,5 +44,4 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
 		// sys_env_destroy(env_id);
 		panic("fail 2");
 	}
-	cprintf("succeed\n");
 }

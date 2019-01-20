@@ -338,6 +338,8 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 4: Your code here.
 	if (curenv->env_pgfault_upcall != NULL) {
+		cprintf("121321321321321321321231\n");
+		cprintf("%u\n", curenv->env_pgfault_upcall);
 		uintptr_t utf_addr;
 		if (UXSTACKTOP - PGSIZE <= tf->tf_esp && tf->tf_esp < UXSTACKTOP) {
 			// recursive
