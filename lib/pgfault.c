@@ -33,17 +33,14 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
 		// LAB 4: Your code here.
 		r = sys_page_alloc(env_id, (void *) (UXSTACKTOP - PGSIZE), PTE_W | PTE_U);
 		if (r < 0) {
-			// sys_env_destroy(env_id);
-			panic("fail 1");
+			sys_env_destroy(env_id);
+		}
+		r = sys_env_set_pgfault_upcall(env_id, _pgfault_upcall);
+		if (r < 0) {
+			sys_env_destroy(env_id);
 		}
 	}
 
 	// Save handler pointer for assembly to call.
 	_pgfault_handler = handler;
-	r = sys_env_set_pgfault_upcall(env_id, handler);
-	if (r < 0) {
-		// sys_env_destroy(env_id);
-		panic("fail 2");
-	}
-	// cprintf("ddd %u\n", (uintptr_t) _pgfault_handler);
 }

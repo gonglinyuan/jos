@@ -360,6 +360,7 @@ page_fault_handler(struct Trapframe *tf)
 		utf_ptr->utf_fault_va = fault_va;
 		curenv->env_tf.tf_eip = (uintptr_t) curenv->env_pgfault_upcall;
 		curenv->env_tf.tf_esp = utf_addr;
+		cprintf("eee\n");
 		env_run(curenv);
 	}
 
