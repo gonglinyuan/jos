@@ -116,7 +116,7 @@ fork(void)
 	sys_env_set_pgfault_upcall(child_id, _pgfault_upcall);
 	r = sys_env_set_status(child_id, ENV_RUNNABLE);
 	if (r < 0) return r;
-	return 0;
+	return child_id;
 }
 
 // Challenge!
