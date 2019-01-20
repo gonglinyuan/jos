@@ -296,7 +296,7 @@ r = envid2env(dstenvid, &dstenv_ptr, 1);
 if (r < 0) {
 	return r;
 }
-if (srcva != ROUNDDOWN(srcva) || (uintptr_t) srcva >= UTOP || dstva != ROUNDDOWN(dstva) || (uintptr_t) dstva >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+if (srcva != ROUNDDOWN(srcva, PGSIZE) || (uintptr_t) srcva >= UTOP || dstva != ROUNDDOWN(dstva, PGSIZE) || (uintptr_t) dstva >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
 	return -E_INVAL;
 }
 pte_t *pte_ptr;
