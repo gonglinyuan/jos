@@ -323,7 +323,7 @@ page_init(void)
 	physaddr_t kern_memory_end = PADDR(boot_alloc(0));
 	for (size_t i = 0; i < npages; i++) {
 		physaddr_t pa = page2pa(pages + i);
-		if ((PGSIZE <= pa && pa < npages_basemem * PGSIZE) || (pa > kern_memory_end)) {
+		if ((PGSIZE <= pa && pa < npages_basemem * PGSIZE && (pa != MPENTRY_PADDR)) || (pa > kern_memory_end)) {
 			assert(i > 0);
 			pages[i].pp_ref = 0;
 			pages[i].pp_link = page_free_list;
@@ -592,7 +592,13 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	physaddr_t pa_end = ROUNDUP(pa + size);
+	if (pa_end > MMIOLIM) {
+		panic("mmio_map_region overflow");
+	}
+	boot_map_region(kern_pgdir, base, pa_end - ROUNDDOWN(pa), ROUNDDOWN(pa), PTE_PCD | PTE_PWT | PTE_W);
+	base += pa_end - ROUNDDOWN(pa);
+	return (void *)(base - (pa_end - pa));
 }
 
 static uintptr_t user_mem_check_addr;
