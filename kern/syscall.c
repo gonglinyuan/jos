@@ -320,25 +320,27 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 	if (!env->env_ipc_recving) {
 		return -E_IPC_NOT_RECV;
 	}
-	if ((uintptr_t)srcva < UTOP) {
-		if (ROUNDUP(srcva, PGSIZE) == srcva && (perm & PTE_SYSCALL) == perm ) {
+	if ((uintptr_t) srcva < UTOP) {
+		if (ROUNDUP(srcva, PGSIZE) == srcva && (perm & PTE_SYSCALL) == perm) {
 			struct PageInfo * page;
 			pte_t * pte;
 			if ((page = page_lookup(curenv->env_pgdir, srcva, &pte))) {
 				if (!(perm & PTE_W) || (*pte & PTE_W)) {
-					if((uintptr_t)env->env_ipc_dstva < UTOP && page_insert(env->env_pgdir, page, env->env_ipc_dstva, perm)) {
-						return -E_NO_MEM;
+					if (env->env_ipc_dstva < UTOP) {
+						int r = page_insert(env->env_pgdir, page, env->env_ipc_dstva, perm);
+						if (r < 0) return r;
 					}
 					env->env_ipc_perm = perm;
-				}
-				else {
+				} else {
+					panic("panic 1");
 					return -E_INVAL;
 				}
-			}
-			else {
+			} else {
+				panic("panic 2");
 				return -E_INVAL;
 			}
 		} else {
+			panic("panic 3");
 			return -E_INVAL;
 		}
 	} else {
