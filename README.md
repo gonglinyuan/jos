@@ -38,152 +38,57 @@ for (int i = 0; i < NCPU; ++i) {
 }
 ```
 
-**Exercise 4.** *Edit `trapentry.S` and `trap.c` and implement the features described above.*
+**Exercise 4.** *The code in `trap_init_percpu()` (`kern/trap.c`) initializes the TSS and TSS descriptor for the BSP. It worked in Lab 3, but is incorrect when running on other CPUs. Change the code so that it can work on all CPUs.*
 
-- *You will need to add an entry point in `trapentry.S` (using those macros) for each trap defined in `inc/trap.h`*
-
-  In `trapentry.S` I added code:
-
-  ```assembly
-  TRAPHANDLER_NOEC(handle_divide, T_DIVIDE)
-  TRAPHANDLER_NOEC(handle_debug, T_DEBUG)
-  TRAPHANDLER_NOEC(handle_nmi, T_NMI)
-  TRAPHANDLER_NOEC(handle_brkpt, T_BRKPT)
-  TRAPHANDLER_NOEC(handle_oflow, T_OFLOW)
-  TRAPHANDLER_NOEC(handle_bound, T_BOUND)
-  TRAPHANDLER_NOEC(handle_illop, T_ILLOP)
-  TRAPHANDLER_NOEC(handle_device, T_DEVICE)
-  TRAPHANDLER(handle_dblflt, T_DBLFLT)
-  /* TRAPHANDLER_NOEC(handle_coproc, T_COPROC) */
-  TRAPHANDLER(handle_tss, T_TSS)
-  TRAPHANDLER(handle_segnp, T_SEGNP)
-  TRAPHANDLER(handle_stack, T_STACK)
-  TRAPHANDLER(handle_gpflt, T_GPFLT)
-  TRAPHANDLER(handle_pgflt, T_PGFLT)
-  /* TRAPHANDLER(handle_res, T_RES) */
-  TRAPHANDLER_NOEC(handle_fperr, T_FPERR)
-  ```
-
-- *and you'll have to provide `_alltraps` which the `TRAPHANDLER` macros refer to.*
-
-  In `trapentry.S` I added code:
-
-  ```assembly
-  _alltraps:
-  	pushl	%ds
-  	pushl	%es
-  	pushal
-  	pushl	$GD_KD
-  	popl	%ds
-  	pushl	$GD_KD
-  	popl	%es
-  	pushl	%esp
-  	call	trap
-  ```
-
-- *You will also need to modify `trap_init()` to initialize the `idt` to point to each of these entry points defined in `trapentry.S`*
-
-  In `trap_init()` I added code:
-
-  ```c
-  void handle_divide();
-  void handle_debug();
-  void handle_nmi();
-  void handle_brkpt();
-  void handle_oflow();
-  void handle_bound();
-  void handle_illop();
-  void handle_device();
-  void handle_dblflt();
-  /* void handle_coproc(); */
-  void handle_tss();
-  void handle_segnp();
-  void handle_stack();
-  void handle_gpflt();
-  void handle_pgflt();
-  /* void handle_res(); */
-  void handle_fperr();
-  
-  SETGATE(idt[T_DIVIDE], 0, GD_KT, handle_divide, 0);
-  SETGATE(idt[T_DEBUG], 0, GD_KT, handle_debug, 0);
-  SETGATE(idt[T_NMI], 0, GD_KT, handle_nmi, 0);
-  SETGATE(idt[T_BRKPT], 0, GD_KT, handle_brkpt, 0);
-  SETGATE(idt[T_OFLOW], 0, GD_KT, handle_oflow, 0);
-  SETGATE(idt[T_BOUND], 0, GD_KT, handle_bound, 0);
-  SETGATE(idt[T_ILLOP], 0, GD_KT, handle_illop, 0);
-  SETGATE(idt[T_DEVICE], 0, GD_KT, handle_device, 0);
-  SETGATE(idt[T_DBLFLT], 0, GD_KT, handle_dblflt, 0);
-  /* SETGATE(idt[T_COPROC], 0, GD_KT, handle_coproc, 0); */
-  SETGATE(idt[T_TSS], 0, GD_KT, handle_tss, 0);
-  SETGATE(idt[T_SEGNP], 0, GD_KT, handle_segnp, 0);
-  SETGATE(idt[T_STACK], 0, GD_KT, handle_stack, 0);
-  SETGATE(idt[T_GPFLT], 0, GD_KT, handle_gpflt, 0);
-  SETGATE(idt[T_PGFLT], 0, GD_KT, handle_pgflt, 0);
-  /* SETGATE(idt[T_RES], 0, GD_KT, handle_res, 0); */
-  SETGATE(idt[T_FPERR], 0, GD_KT, handle_fperr, 0);
-  ```
-
-**Challenge 1.** *You probably have a lot of very similar code right now, between the lists of `TRAPHANDLER` in `trapentry.S` and their installations in `trap.c`. Clean this up. Change the macros in`trapentry.S` to automatically generate a table for `trap.c` to use.*
-
-In `trapentry.S`, I added code:
-
-```assembly
-.data
-.global idt_entries
-idt_entries:
-	.long handle_divide
-	.long handle_debug
-	.long handle_nmi
-	.long handle_brkpt
-	.long handle_oflow
-	.long handle_bound
-	.long handle_illop
-	.long handle_device
-	.long handle_dblflt
-	.long handle_coproc
-	.long handle_tss
-	.long handle_segnp
-	.long handle_stack
-	.long handle_gpflt
-	.long handle_pgflt
-	.long handle_res
-	.long handle_fperr
-	.long handle_align
-	.long handle_mchk
-	.long handle_simderr
-```
-
-I modified `trap_init()` to be:
+I modified `trap_init_per_cpu()` to be:
 
 ```c
-extern uint32_t idt_entries[];
-for (int i = 0; i < 20; ++i) {
-	SETGATE(idt[i], 0, GD_KT, idt_entries[i], 0);
-}
+uintptr_t kstacktop_i = KSTACKTOP - cpunum() * (KSTKSIZE + KSTKGAP);
+thiscpu->cpu_ts.ts_esp0 = kstacktop_i;
+thiscpu->cpu_ts.ts_ss0 = GD_KD;
+thiscpu->cpu_ts.ts_iomb = sizeof(struct Taskstate);
+
+// Initialize the TSS slot of the gdt.
+gdt[(GD_TSS0 >> 3) + cpunum()] = SEG16(STS_T32A, (uint32_t) (&(thiscpu->cpu_ts)), sizeof(struct Taskstate) - 1, 0);
+gdt[(GD_TSS0 >> 3) + cpunum()].sd_s = 0;
+
+// Load the TSS selector (like other segment selectors, the
+// bottom three bits are special; we leave them 0)
+ltr(GD_TSS0 + (cpunum() << 3));
+
+// Load the IDT
+lidt(&idt_pd);
 ```
 
-and eliminated duplicate codes.
+I ran `make qemu-nox CPUS=4`, the output is:
 
-**Questions 1.**
-
-1. *What is the purpose of having an individual handler function for each exception/interrupt? (i.e., if all exceptions/interrupts were delivered to the same handler, what feature that exists in the current implementation could not be provided?)*
-
-   If we use an individual handler function for each exception/interrupt, we can safely let user apps deal with some of the exceptions and disallow user apps to catch other exceptions. Therefore, it is easier to provide protections.
-
-2. *Did you have to do anything to make the `user/softint` program behave correctly? The grade script expects it to produce a general protection fault (trap 13), but `softint`'s code says`int $14`. Why should this produce interrupt vector 13? What happens if the kernel actually allows `softint`'s `int $14` instruction to invoke the kernel's page fault handler (which is interrupt vector 14)?*
-
-   The `int 14` produces interrupt vector 13 because the DPL for page fault handler is 0 (kernel privileged). So when CPU finds out that the user is calling `int 14`, it will trigger the general protection fault, which gives a trap number 13.
-
-**Exercise 5.** *Modify `trap_dispatch()` to dispatch page fault exceptions to `page_fault_handler()`.*
-
-In `trap_dispatch()`, I added code:
-
-```c
-if (tf->tf_trapno == T_PGFLT) {
-	page_fault_handler(tf);
-	return;
-}
 ```
+Physical memory: 131072K available, base = 640K, extended = 130432K
+check_page_free_list() succeeded!
+check_page_alloc() succeeded!
+check_page() succeeded!
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!
+SMP: CPU 0 found 4 CPU(s)
+enabled interrupts: 1 2
+SMP: CPU 1 starting
+SMP: CPU 2 starting
+SMP: CPU 3 starting
+[00000000] new env 00001000
+```
+
+**Exercise 5.** *Apply the big kernel lock as described above, by calling `lock_kernel()` and `unlock_kernel()` at the proper locations.*
+
+I added `lock_kernel()` at:
+
+1. `i386_init()` in `init.c`, before `boot_aps()`
+2. `mp_main()` in `init.c`, before `for (;;);`. I also added `sched_yield()`
+3. `trap()` in `trap.c`, after `assert(curenv)`.
+
+I added `unlock_kernel()` at:
+
+1. `env_run()` in `env.c`, before `env_pop_tf()`
 
 **Exercise 6.** *Modify `trap_dispatch()` to make breakpoint exceptions invoke the kernel monitor. You should now be able to get make grade to succeed on the `breakpoint` test.*
 
