@@ -37,10 +37,10 @@ pgfault(struct UTrapframe *utf)
 
 	// LAB 4: Your code here.
 	addr = ROUNDDOWN(addr, PGSIZE);
-	sys_page_alloc(thisenv->env_id, PFTEMP, PTE_W | PTE_U);
+	sys_page_alloc(0, PFTEMP, PTE_W | PTE_U);
 	memcpy(PFTEMP, addr, PGSIZE);
-	sys_page_map(thisenv->env_id, PFTEMP, thisenv->env_id, addr, (uvpt[PGNUM(addr)] & PTE_SYSCALL & ~PTE_COW) | PTE_W);
-	sys_page_unmap(thisenv->env_id, PFTEMP);
+	sys_page_map(0, PFTEMP, 0, addr, (uvpt[PGNUM(addr)] & PTE_SYSCALL & ~PTE_COW) | PTE_W);
+	sys_page_unmap(0, PFTEMP);
 }
 
 //
@@ -62,12 +62,12 @@ duppage(envid_t envid, unsigned pn)
 	// LAB 4: Your code here.
 	uintptr_t addr = pn * PGSIZE;
 	if ((uvpt[pn] & PTE_COW) || (uvpt[pn] & PTE_W)) {
-		r = sys_page_map(thisenv->env_id, (void *) addr, envid, (void *) addr, PTE_U | PTE_COW);
+		r = sys_page_map(0, (void *) addr, envid, (void *) addr, PTE_U | PTE_COW);
 		if (r < 0) return r;
-		r = sys_page_map(thisenv->env_id, (void *) addr, thisenv->env_id, (void *) addr, PTE_U | PTE_COW);
+		r = sys_page_map(0, (void *) addr, 0, (void *) addr, PTE_U | PTE_COW);
 		if (r < 0) return r;
 	} else {
-		r = sys_page_map(thisenv->env_id, (void *) addr, envid, (void *) addr, PTE_U);
+		r = sys_page_map(0, (void *) addr, envid, (void *) addr, PTE_U);
 		if (r < 0) return r;
 	}
 	return 0;
