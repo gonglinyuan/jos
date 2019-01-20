@@ -121,6 +121,8 @@ When an interrupt occurs, CPU will push things into the current kernel stack. Th
 
 *Make sure to invoke `sched_yield()` in `mp_main`.*
 
+*Modify `kern/init.c` to create three (or more!) environments that all run the program `user/yield.c`.*
+
 In `sched_yield()` of `sched.c`, I added code:
 
 ```c
@@ -146,6 +148,21 @@ In `syscall()` of `syscall.c`, I added code:
 case SYS_yield:
 	sys_yield();
 	return 0;
+```
+
+In `mp_main()` of `init.c`, I removed:
+
+```c
+// Remove this after you finish Exercise 6
+for (;;);
+```
+
+In `i386_init()` of `init.c`, I replaced `ENV_CREATE(user_primes, ENV_TYPE_USER)` with:
+
+```c
+ENV_CREATE(user_yield, ENV_TYPE_USER);
+ENV_CREATE(user_yield, ENV_TYPE_USER);
+ENV_CREATE(user_yield, ENV_TYPE_USER);
 ```
 
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
