@@ -512,3 +512,21 @@ In `env_alloc()`, I added:
 e->env_tf.tf_eflags |= FL_IF;
 ```
 
+**Exercise 14.** *Modify the kernel's `trap_dispatch()` function so that it calls `sched_yield()` to find and run a different environment whenever a clock interrupt takes place.*
+
+In `trap_init()`, I added:
+
+```c
+SETGATE(idt[IRQ_OFFSET + IRQ_TIMER], 0, GD_KT, idt_entries[IRQ_OFFSET + IRQ_TIMER], 0);
+```
+
+In `trap_dispatch`, I added:
+
+```c
+if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER) {
+	lapic_eoi();
+	sched_yield();
+	return;
+}
+```
+
