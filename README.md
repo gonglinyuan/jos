@@ -437,6 +437,10 @@ if (r < 0) {
 }
 ```
 
+**Exercise 12.** *Implement `fork`, `duppage` and `pgfault` in `lib/fork.c`.*
+
+
+
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
 
 First, I added two monitor commands: `continue` and `stepi`.
