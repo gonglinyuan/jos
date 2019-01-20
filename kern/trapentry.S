@@ -47,10 +47,66 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
-
+	TRAPHANDLER_NOEC(handle_divide, T_DIVIDE)
+	TRAPHANDLER_NOEC(handle_debug, T_DEBUG)
+	TRAPHANDLER_NOEC(handle_nmi, T_NMI)
+	TRAPHANDLER_NOEC(handle_brkpt, T_BRKPT)
+	TRAPHANDLER_NOEC(handle_oflow, T_OFLOW)
+	TRAPHANDLER_NOEC(handle_bound, T_BOUND)
+	TRAPHANDLER_NOEC(handle_illop, T_ILLOP)
+	TRAPHANDLER_NOEC(handle_device, T_DEVICE)
+	TRAPHANDLER(handle_dblflt, T_DBLFLT)
+	TRAPHANDLER_NOEC(handle_coproc, 9)
+	TRAPHANDLER(handle_tss, T_TSS)
+	TRAPHANDLER(handle_segnp, T_SEGNP)
+	TRAPHANDLER(handle_stack, T_STACK)
+	TRAPHANDLER(handle_gpflt, T_GPFLT)
+	TRAPHANDLER(handle_pgflt, T_PGFLT)
+	TRAPHANDLER(handle_res, 15)
+	TRAPHANDLER_NOEC(handle_fperr, T_FPERR)
+	TRAPHANDLER_NOEC(handle_align, T_ALIGN)
+	TRAPHANDLER_NOEC(handle_mchk, T_MCHK)
+	TRAPHANDLER_NOEC(handle_simderr, T_SIMDERR)
+	
+	TRAPHANDLER_NOEC(handle_syscall, T_SYSCALL)
 
 
 /*
  * Lab 3: Your code here for _alltraps
  */
 
+_alltraps:
+	pushl	%ds
+	pushl	%es
+	pushal
+	pushl	$GD_KD
+	popl	%ds
+	pushl	$GD_KD
+	popl	%es
+	pushl	%esp
+	call	trap
+
+
+.data
+.global idt_entries
+idt_entries:
+	.long handle_divide
+	.long handle_debug
+	.long handle_nmi
+	.long handle_brkpt
+	.long handle_oflow
+	.long handle_bound
+	.long handle_illop
+	.long handle_device
+	.long handle_dblflt
+	.long handle_coproc
+	.long handle_tss
+	.long handle_segnp
+	.long handle_stack
+	.long handle_gpflt
+	.long handle_pgflt
+	.long handle_res
+	.long handle_fperr
+	.long handle_align
+	.long handle_mchk
+	.long handle_simderr
