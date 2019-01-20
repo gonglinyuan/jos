@@ -27,6 +27,7 @@ set_pgfault_handler(void (*handler)(struct UTrapframe *utf))
 	int r;
 
 	int env_id = sys_getenvid();
+	cprintf("envid = %d\n", env_id);
 	if (_pgfault_handler == 0) {
 		// First time through!
 		// LAB 4: Your code here.
