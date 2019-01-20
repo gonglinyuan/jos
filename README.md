@@ -362,6 +362,34 @@ case SYS_env_set_pgfault_upcall:
 	return sys_env_set_pgfault_upcall(a1, (void *) a2);
 ```
 
+**Exercise 9.** *Implement the code in `page_fault_handler` in `kern/trap.c` required to dispatch page faults to the user-mode handler. Be sure to take appropriate precautions when writing into the exception stack.*
+
+In `page_fault_handler()`, I added code:
+
+```c
+if (curenv->env_pgfault_upcall != NULL) {
+	uintptr_t utf_addr;
+	if (UXSTACKTOP - PGSIZE <= tf->tf_esp && tf->tf_esp < UXSTACKTOP) {
+		// recursive
+		utf_addr = tf->tf_esp - sizeof(struct UTrapframe) - sizeof(uintptr_t);
+	} else {
+		// non-recursive
+		utf_addr = UXSTACKTOP - sizeof(struct UTrapframe);
+	}
+	user_mem_assert(curenv, (const void *) utf_addr, sizeof(struct UTrapframe), PTE_W);
+	struct UTrapframe *utf_ptr = (struct UTrapframe *) utf_addr;
+	utf_ptr->utf_eflags = tf->tf_eflags;
+	utf_ptr->utf_eip = tf->tf_eip;
+	utf_ptr->utf_err = tf->tf_err;
+	utf_ptr->utf_regs = tf->tf_regs;
+	utf_ptr->utf_esp = tf->tf_esp;
+	utf_ptr->utf_fault_va = fault_va;
+	curenv->env_tf.tf_eip = (uintptr_t) curenv->env_pgfault_upcall;
+	curenv->env_tf.tf_esp = utf_addr;
+	env_run(curenv);
+}
+```
+
 
 
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
