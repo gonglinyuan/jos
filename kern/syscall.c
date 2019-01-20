@@ -257,7 +257,7 @@ sys_page_unmap(envid_t envid, void *va)
 	if (r < 0) {
 		return r;
 	}
-	if (va != ROUNDDOWN(va, PGSIZE) || (uintptr_t) va >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+	if (va != ROUNDDOWN(va, PGSIZE) || (uintptr_t) va >= UTOP) {
 		return -E_INVAL;
 	}
 	page_remove(env_ptr->env_pgdir, va);
