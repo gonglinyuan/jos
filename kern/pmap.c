@@ -592,12 +592,12 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	physaddr_t pa_end = ROUNDUP(pa + size);
+	physaddr_t pa_end = ROUNDUP(pa + size, PGSIZE), pa_start = ROUNDDOWN(pa, PGSIZE);
 	if (pa_end > MMIOLIM) {
 		panic("mmio_map_region overflow");
 	}
-	boot_map_region(kern_pgdir, base, pa_end - ROUNDDOWN(pa), ROUNDDOWN(pa), PTE_PCD | PTE_PWT | PTE_W);
-	base += pa_end - ROUNDDOWN(pa);
+	boot_map_region(kern_pgdir, base, pa_end - pa_start, pa_start, PTE_PCD | PTE_PWT | PTE_W);
+	base += pa_end - pa_start;
 	return (void *)(base - (pa_end - pa));
 }
 
