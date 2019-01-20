@@ -349,6 +349,7 @@ page_fault_handler(struct Trapframe *tf)
 			// non-recursive
 			utf_addr = UXSTACKTOP - sizeof(struct UTrapframe);
 			cprintf("ccc %u\n", utf_addr);
+			asm volatile("int $3");
 		}
 		user_mem_assert(curenv, (const void *) utf_addr, sizeof(struct UTrapframe), PTE_W);
 		struct UTrapframe *utf_ptr = (struct UTrapframe *) utf_addr;
