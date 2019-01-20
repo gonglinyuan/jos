@@ -439,280 +439,76 @@ if (r < 0) {
 
 **Exercise 12.** *Implement `fork`, `duppage` and `pgfault` in `lib/fork.c`.*
 
-
-
-**Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
-
-First, I added two monitor commands: `continue` and `stepi`.
-
-In `monitor.h`, I added code:
+In `pgfault()`, I added code:
 
 ```c
-int mon_continue(int argc, char **argv, struct Trapframe *tf);
-int mon_stepi(int argc, char **argv, struct Trapframe *tf);
+if (!((err & FEC_PR) && (uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_COW))) {
+	panic("not COW pagefault");
+}
 ```
 
-In `monitor.c`, I added code:
+and:
 
 ```c
-#include <kern/env.h>
+addr = ROUNDDOWN(addr, PGSIZE);
+sys_page_alloc(0, PFTEMP, PTE_W | PTE_U);
+memcpy(PFTEMP, addr, PGSIZE);
+sys_page_map(0, PFTEMP, 0, addr, (uvpt[PGNUM(addr)] & PTE_SYSCALL & ~PTE_COW) | PTE_W);
+sys_page_unmap(0, PFTEMP);
 ```
 
-and
+In `duppage()`, I added code:
 
 ```c
-{ "continue", "Continue running", mon_continue },
-{ "stepi", "step to the next instruction", mon_stepi }
+uintptr_t addr = pn * PGSIZE;
+if ((uvpt[pn] & PTE_COW) || (uvpt[pn] & PTE_W)) {
+	r = sys_page_map(0, (void *) addr, envid, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
+	if (r < 0) return r;
+	r = sys_page_map(0, (void *) addr, 0, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
+	if (r < 0) return r;
+} else {
+	r = sys_page_map(0, (void *) addr, envid, (void *) addr, (uvpt[pn] & PTE_SYSCALL));
+	if (r < 0) return r;
+}
+return 0;
 ```
 
-and their definitions:
+In `fork()`, I added code:
 
 ```c
-int mon_continue(int argc, char **argv, struct Trapframe *tf) {
-	assert(tf && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG));
-	tf->tf_eflags &= ~0x100;  // clear the trap flag
-	env_run(curenv);
+set_pgfault_handler(pgfault);
+envid_t child_id = sys_exofork();
+if (child_id < 0) {
+	// Error
+	return child_id;
+} else if (child_id == 0) {
+	// I am the child
+	set_pgfault_handler(pgfault);
+	thisenv = envs + ENVX(sys_getenvid());
 	return 0;
 }
-
-int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
-	assert(tf && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG));
-	tf->tf_eflags |= 0x100;  // set the trap flag
-	env_run(curenv);
-	return 0;
+for (uintptr_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+	if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_U)) {
+		duppage(child_id, PGNUM(addr));
+	}
 }
+// Exception stack
+int r = sys_page_alloc(child_id, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_W);
+if (r < 0) return r;
+extern void _pgfault_upcall();
+sys_env_set_pgfault_upcall(child_id, _pgfault_upcall);
+r = sys_env_set_status(child_id, ENV_RUNNABLE);
+if (r < 0) return r;
+return child_id;
 ```
 
-If the trap flag in `EFLAGS` is set, the processor will interrupt after executing the next instruction with `T_DEBUG`.
+**Exercise 13.** *Modify `kern/trapentry.S` and `kern/trap.c` to initialize the appropriate entries in the IDT and provide handlers for IRQs 0 through 15. Then modify the code in `env_alloc()`in `kern/env.c` to ensure that user environments are always run with interrupts enabled.*
 
-Then, I added trap handler for `T_DEBUG`:
+*Also uncomment the `sti` instruction in `sched_halt()` so that idle CPUs unmask interrupts.*
 
-In `trap_dispatch()` in `trap.c`, I modified the code to be:
+In `env_alloc()`, I added:
 
 ```c
-} else if (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG) {
-	monitor(tf);
-	return;
-}
-```
-
-I tested my tiny debugger using `breakpoint` program. I run `make run-breakpoint-nox`, and the output is:
-
-```
-check_page_free_list() succeeded!
-check_page_alloc() succeeded!
-check_page() succeeded!
-check_kern_pgdir() succeeded!
-check_page_free_list() succeeded!
-check_page_installed_pgdir() succeeded!                                                                                          [40/1896]
-[00000000] new env 00001000
-Incoming TRAP frame at 0xefffffbc
-Incoming TRAP frame at 0xefffffbc
-Welcome to the JOS kernel monitor!
-Type 'help' for a list of commands.
-TRAP frame at 0xf01c0000
-  edi  0x00000000
-  esi  0x00000000
-  ebp  0xeebfdfd0
-  oesp 0xefffffdc
-  ebx  0x00000000
-  edx  0x00000000
-  ecx  0x00000000
-  eax  0xeec00000
-  es   0x----0023
-  ds   0x----0023
-  trap 0x00000003 Breakpoint
-  err  0x00000000
-  eip  0x00800037
-  cs   0x----001b
-  flag 0x00000082
-  esp  0xeebfdfd0
-  ss   0x----0023
-K> 
-```
-
-I typed `stepi` to let it execute the next instruction and stop:
-
-```
-K> stepi                                              
-Incoming TRAP frame at 0xefffffbc
-Welcome to the JOS kernel monitor!
-Type 'help' for a list of commands.
-TRAP frame at 0xf01c0000
-  edi  0x00000000
-  esi  0x00000000
-  ebp  0xeebfdff0
-  oesp 0xefffffdc
-  ebx  0x00000000
-  edx  0x00000000
-  ecx  0x00000000
-  eax  0xeec00000
-  es   0x----0023
-  ds   0x----0023
-  trap 0x00000001 Debug
-  err  0x00000000
-  eip  0x00800038
-  cs   0x----001b
-  flag 0x00000182
-  esp  0xeebfdfd4
-  ss   0x----0023
-K>   
-```
-
-Then, I typed `continue` to let it continue running:
-
-```
-K> continue
-Incoming TRAP frame at 0xefffffbc
-[00001000] exiting gracefully
-[00001000] free env 00001000
-Destroyed the only environment - nothing more to do!
-Welcome to the JOS kernel monitor!
-Type 'help' for a list of commands.
-```
-
-**Questions 2.**
-
-1. *The break point test case will either generate a break point exception or a general protection fault depending on how you initialized the break point entry in the IDT (i.e., your call to`SETGATE` from `trap_init`). Why? How do you need to set it up in order to get the breakpoint exception to work as specified above and what incorrect setup would cause it to trigger a general protection fault?*
-
-   If we pass `0` as `dpl` (privilege level) when calling `SETGATE`, the test case will generate a general protection fault because user-mode apps have no permission to execute `int 03h`. So we modified `dpl` to be `3`, then user-mode apps can enter the trap handler of break point exception correctly.
-
-2. *What do you think is the point of these mechanisms, particularly in light of what the `user/softint` test program does?*
-
-   Because there are protections that prevent user-mode apps from arbitrarily invoking trap handlers in the kernel.
-
-**Exercise 7.** *Add a handler in the kernel for interrupt vector `T_SYSCALL`. Finally, you need to implement `syscall()` in `kern/syscall.c`. Handle all the system calls listed in `inc/syscall.h` by invoking the corresponding kernel function for each call.*
-
-In `trapentry.S`, I added code:
-
-```assembly
-TRAPHANDLER_NOEC(handle_syscall, T_SYSCALL)
-```
-
-In `trap_init()` of `trap.c`, I added code:
-
-```c
-extern void handle_syscall();
-SETGATE(idt[T_SYSCALL], 1, GD_KT, handle_syscall, 3);
-```
-
-In `trap_dispatch()` of `trap.c`, I added code:
-
-```c
-} else if (tf->tf_trapno == T_SYSCALL) {
-	tf->tf_regs.reg_eax = syscall(
-		tf->tf_regs.reg_eax,  // number
-		tf->tf_regs.reg_edx,  // arg 1
-		tf->tf_regs.reg_ecx,  // arg 2
-		tf->tf_regs.reg_ebx,  // arg 3
-		tf->tf_regs.reg_edi,  // arg 4
-		tf->tf_regs.reg_esi  // arg 5
-	);
-    return;
-}
-```
-
-I modified `syscall()` in `syscall.c` to be:
-
-```c
-switch (syscallno) {
-case SYS_cputs:
-	sys_cputs((const char *) a1, a2);
-	return 0;
-case SYS_cgetc:
-	return sys_cgetc();
-case SYS_getenvid:
-	return sys_getenvid();
-case SYS_env_destroy:
-	return sys_env_destroy(a1);
-default:
-	return -E_INVAL;
-}
-```
-
-**Exercise 8.** *Add the required code to the user library, then boot your kernel. You should see `user/hello` print "`hello, world`" and then print "`i am environment 00001000`". `user/hello` then attempts to "exit" by calling `sys_env_destroy()` (see `lib/libmain.c` and `lib/exit.c`).*
-
-In `libmain()`, I added code:
-
-```c
-thisenv = envs + ENVX(sys_getenvid());
-```
-
-**Exercise 9.** 
-
-- *Change `kern/trap.c` to panic if a page fault happens in kernel mode.*
-
-  In `page_fault_handler()`, I added code:
-
-  ```c
-  if ((tf->tf_cs & 0x3) == 0) {  // the last 2 bits of CS is the DPL
-  	panic("kernel page fault");
-  }
-  ```
-
-- *Read `user_mem_assert` in `kern/pmap.c` and implement `user_mem_check` in that same file.*
-
-  In `user_mem_check()`, I added code:
-
-  ```c
-  const void *va_end = va + len;
-  for (void *i = ROUNDDOWN(va, PGSIZE); i < va_end; i += PGSIZE) {
-  	if (i >= ULIM) {
-  		user_mem_check_addr = (uintptr_t) MIN(i, va);
-  		return -E_FAULT;
-  	}
-  	pte_t *pte_ptr;
-  	struct PageInfo *pp = page_lookup(env->env_pgdir, i, &pte_ptr);
-  	if (!pp || ((perm & (*pte_ptr)) != perm)) {  // perm in pte
-  		user_mem_check_addr = (uintptr_t) MIN(i, va);
-  		return -E_FAULT;
-  	}
-  }
-  ```
-
-- *Change `kern/syscall.c` to sanity check arguments to system calls.*
-
-  In `sys_cputs()`, I added code:
-
-  ```c
-  user_mem_assert(curenv, (const void *) s, len, PTE_U);
-  ```
-
-- *Finally, change `debuginfo_eip` in `kern/kdebug.c` to call `user_mem_check` on `usd`, `stabs`, and `stabstr`.*
-
-  In `debuginfo_eip()`, I added code:
-
-  ```c
-  if (user_mem_check(curenv, (const void *) addr, sizeof(struct UserStabData), PTE_U)) {
-  	return -1;
-  }
-  ```
-
-  and
-
-  ```c
-  if (user_mem_check(curenv, (const void *) stabs, ((uintptr_t) stab_end) - ((uintptr_t) stabs), PTE_U) ||
-  	user_mem_check(curenv, (const void *) stabstr, ((uintptr_t) stabstr_end) - ((uintptr_t) stabstr), PTE_U)) {
-  	return -1;
-  }
-  ```
-
-**Exercise 10.** *Boot your kernel, running `user/evilhello`. The environment should be destroyed, and the kernel should not panic.*
-
-I run `evilhello` with
-
-```
-make run-evilhello
-```
-
-And the qemu outputs:
-
-```
-[00000000] new env 00001000
-Incoming TRAP frame at 0xefffffbc
-Incoming TRAP frame at 0xefffffbc
-[00001000] user_mem_check assertion failure for va f010000c
-[00001000] free env 00001000
-Destroyed the only environment - nothing more to do!
+e->env_tf.tf_eflags |= FL_IF;
 ```
 
