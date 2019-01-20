@@ -250,7 +250,7 @@ return env_ptr->env_id;
 In `sys_env_set_status`, I added:
 
 ```c
-if (status != ENV_RUNNABLE || status != ENV_NOT_RUNNABLE) {
+if (status != ENV_RUNNABLE && status != ENV_NOT_RUNNABLE) {
 	return -E_INVAL;
 }
 struct Env *env_ptr;
