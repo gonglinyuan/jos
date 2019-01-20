@@ -341,6 +341,29 @@ case SYS_page_unmap:
 	return sys_page_unmap(a1, (void *) a2);
 ```
 
+**Exercise 8.** *Implement the `sys_env_set_pgfault_upcall` system call. Be sure to enable permission checking when looking up the environment ID of the target environment, since this is a "dangerous" system call*
+
+In `sys_env_set_pgfault_upcall()`, I added code:
+
+```c
+struct Env *env_ptr;
+int r = envid2env(envid, &env_ptr, 1);
+if (r < 0) {
+	return r;
+}
+env_ptr->env_pgfault_upcall = func;
+return 0;
+```
+
+In `syscall()`, I added code:
+
+```c
+case SYS_env_set_pgfault_upcall:
+	return sys_env_set_pgfault_upcall(a1, (void *) a2);
+```
+
+
+
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
 
 First, I added two monitor commands: `continue` and `stepi`.
