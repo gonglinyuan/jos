@@ -338,17 +338,13 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 4: Your code here.
 	if (curenv->env_pgfault_upcall != NULL) {
-		cprintf("121321321321321321321231\n");
-		cprintf("aaa %u\n", curenv->env_pgfault_upcall);
 		uintptr_t utf_addr;
 		if (UXSTACKTOP - PGSIZE <= tf->tf_esp && tf->tf_esp < UXSTACKTOP) {
 			// recursive
 			utf_addr = tf->tf_esp - sizeof(struct UTrapframe) - sizeof(uintptr_t);
-			cprintf("bbb %u %u\n", utf_addr, fault_va);
 		} else {
 			// non-recursive
 			utf_addr = UXSTACKTOP - sizeof(struct UTrapframe);
-			cprintf("ccc %u %u\n", utf_addr, fault_va);
 		}
 		user_mem_assert(curenv, (const void *) utf_addr, sizeof(struct UTrapframe), PTE_W);
 		struct UTrapframe *utf_ptr = (struct UTrapframe *) utf_addr;
@@ -360,7 +356,6 @@ page_fault_handler(struct Trapframe *tf)
 		utf_ptr->utf_fault_va = fault_va;
 		curenv->env_tf.tf_eip = (uintptr_t) curenv->env_pgfault_upcall;
 		curenv->env_tf.tf_esp = utf_addr;
-		cprintf("eee\n");
 		env_run(curenv);
 	}
 

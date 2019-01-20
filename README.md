@@ -427,13 +427,13 @@ ret
 In `set_pgfault_handler()`, I added code:
 
 ```c
-int r = sys_page_alloc(sys_getenvid(), (void *) (UXSTACKTOP - PGSIZE), PTE_W | PTE_U);
+r = sys_page_alloc(env_id, (void *) (UXSTACKTOP - PGSIZE), PTE_W | PTE_U);
 if (r < 0) {
-	sys_env_destroy(sys_getenvid());
+	sys_env_destroy(env_id);
 }
-r = sys_env_set_pgfault_upcall(sys_getenvid(), handler);
+r = sys_env_set_pgfault_upcall(env_id, _pgfault_upcall);
 if (r < 0) {
-	sys_env_destroy(sys_getenvid());
+	sys_env_destroy(env_id);
 }
 ```
 
