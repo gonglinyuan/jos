@@ -1,120 +1,42 @@
-# Lab 3
+# Lab 4
 
-**Exercise 1.** *Modify `mem_init()` in `kern/pmap.c` to allocate and map the `envs` array. This array consists of exactly `NENV` instances of the `Env` structure allocated much like how you allocated the `pages` array. Also like the `pages` array, the memory backing `envs` should also be mapped user read-only at `UENVS` (defined in `inc/memlayout.h`) so user processes can read from this array.* 
+**Exercise 1.** *Implement `mmio_map_region` in `kern/pmap.c`. To see how this is used, look at the beginning of `lapic_init` in `kern/lapic.c`.*
 
-In `mem_init()` , I added code:
-
-```c
-envs = (struct Env *) boot_alloc(NENV * sizeof(struct Env));
-memset(envs, 0, NENV * sizeof(struct Env));
-```
-
-and
+In `mmio_map_region()` , I added code:
 
 ```c
-boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U);
+physaddr_t pa_end = ROUNDUP(pa + size, PGSIZE), pa_start = ROUNDDOWN(pa, PGSIZE);
+if (pa_end > MMIOLIM || pa_end < pa_start) {
+    panic("mmio_map_region overflow");
+}
+boot_map_region(kern_pgdir, base, pa_end - pa_start, pa_start, PTE_PCD | PTE_PWT | PTE_W);
+base += pa_end - pa_start;
+return (void *)(base - (pa_end - pa_start));
 ```
 
-**Exercise 2.** *In the file env.c, finish coding the following functions:*
+**Exercise 2.** *Read `boot_aps()` and `mp_main()` in `kern/init.c`, and the assembly code in `kern/mpentry.S`. Make sure you understand the control flow transfer during the bootstrap of APs. Then modify your implementation of `page_init()` in `kern/pmap.c` to avoid adding the page at `MPENTRY_PADDR` to the free list, so that we can safely copy and run AP bootstrap code at that physical address.*
 
-- *`env_init()` : Initialize all of the Env structures in the envs array and add them to the env_free_list. Also calls env_init_percpu, which configures the segmentation hardware with separate segments for privilege level 0 (kernel) and privilege level 3 (user).*
+In `page_init`, I modified the condition to add a free page to be:
 
-  In `env_init()`, I added code:
+```c
+if ((PGSIZE <= pa && pa < npages_basemem * PGSIZE && (pa != MPENTRY_PADDR)) || (pa > kern_memory_end)) {
+```
 
-  ```c
-  env_free_list = NULL;
-  for (int i = NENV - 1; i >= 0; --i) {  // reverse order
-  	envs[i].env_link = env_free_list;
-  	env_free_list = envs + i;
-  }
-  ```
+**Question 1.** *Compare `kern/mpentry.S` side by side with `boot/boot.S`. Bearing in mind that `kern/mpentry.S` is compiled and linked to run above `KERNBASE` just like everything else in the kernel, what is the purpose of macro `MPBOOTPHYS`? Why is it necessary in `kern/mpentry.S` but not in `boot/boot.S`? In other words, what could go wrong if it were omitted in `kern/mpentry.S`?*
 
-- *`env_setup_vm()` : Allocate a page directory for a new environment and initialize the kernel portion of the new environment's address space.*
+- `MPBOOTPHYS()` maps the relative address in `mpentry.S` to its absolute address starting from `MPENTRY_PADDR`  at compile time, because `mpentry.S` will be loaded to `MPENTRY_PADDR`.
+- When compiling `boot.S`, the linker link its symbols to low addresses. When loading `boot.S`, we can just load it at low addresses and run it. However, `mpentry.S` also loads at low addresses but linked to high addresses, so we need `MPBOOTPHYS()` to map back to low addresses.
 
-  In `env_setup_vm()`, I added code:
+**Exercise 3.** *Modify `mem_init_mp()` (in `kern/pmap.c`) to map per-CPU stacks starting at `KSTACKTOP`, as shown in `inc/memlayout.h`. The size of each stack is `KSTKSIZE` bytes plus `KSTKGAP` bytes of unmapped guard pages.*
 
-  ```c
-  p->pp_ref++;
-  e->env_pgdir = (pde_t *) page2kva(p);
-  memcpy(e->env_pgdir, kern_pgdir, PGSIZE);
-  ```
+In `mem_init_mp()`, I added code:
 
-- *`region_alloc()` : Allocates and maps physical memory for an environment*
-
-  In `region_alloc()`, I added code:
-
-  ```c
-  void *va_end = va + len;
-  for (va = ROUNDDOWN(va, PGSIZE); va < va_end; va += PGSIZE) {
-  	struct PageInfo *pp = page_alloc(0);
-  	if (!pp) {
-  		panic("region_alloc failed.");
-  	}
-  	page_insert(e->env_pgdir, pp, va, PTE_U | PTE_W);
-  }
-  ```
-
-- *`load_icode()` : You will need to parse an ELF binary image, much like the boot loader already does, and load its contents into the user address space of a new environment.*
-
-  In `load_icode()`, I added code:
-
-  ```c
-  struct Elf *eh = (struct Elf *) binary;
-  if (eh->e_magic != ELF_MAGIC) {
-  	panic("load icode error: not a valid ELF");
-  }
-  
-  struct Proghdr *ph = (struct Proghdr *) (binary + eh->e_phoff);
-  struct Proghdr *eph = ph + eh->e_phnum;
-  
-  lcr3(PADDR(e->env_pgdir));  // switch to user env's address space
-  for (; ph < eph; ph++) {
-  	if (ph->p_type == ELF_PROG_LOAD) {
-  		region_alloc(e, (void *) ph->p_va, ph->p_memsz);
-  		memset((void *) ph->p_va, 0, ph->p_memsz);
-  		memcpy((void *) ph->p_va, binary + ph->p_offset, ph->p_filesz);
-  	}
-  }
-  lcr3(PADDR(kern_pgdir));  // switch back to kernel's address space
-  
-  e->env_tf.tf_eip = eh->e_entry;  // set saved PC to the entrypoint of the ELF
-  ```
-
-  and:
-
-  ```c
-  region_alloc(e, (void *) (USTACKTOP - PGSIZE), PGSIZE);
-  ```
-
-- *`env_create()` : Allocate an environment with `env_alloc` and call `load_icode` to load an ELF binary into it.*
-
-  In `env_create()`, I added code:
-
-  ```c
-  struct Env *e;
-  if (env_alloc(&e, 0) < 0) {
-  	panic("env_create failed to allocate new environment");
-  }
-  load_icode(e, binary);
-  e->env_type = ENV_TYPE_USER;
-  ```
-
-- *`env_run()` : Start a given environment running in user mode.*
-
-  In `env_run()`, I added code:
-
-  ```c
-  if (curenv && curenv->env_status == ENV_RUNNING) {
-  	curenv->env_status = ENV_RUNNABLE;
-  }
-  curenv = e;
-  e->env_status = ENV_RUNNING;
-  e->env_runs++;
-  lcr3(PADDR(e->env_pgdir));
-  env_pop_tf(&e->env_tf);
-  ```
-
-**Exercise 3.** *Read Chapter 9, Exceptions and Interrupts in the 80386 Programmer's Manual (or Chapter 5 of the IA-32 Developer's Manual), if you haven't already.*
+```c
+for (int i = 0; i < NCPU; ++i) {
+	uintptr_t kstacktop_i = KSTACKTOP - i * (KSTKSIZE + KSTKGAP);
+	boot_map_region(kern_pgdir, kstacktop_i - KSTKSIZE, KSTKSIZE, PADDR(percpu_kstacks[i]), PTE_W);
+}
+```
 
 **Exercise 4.** *Edit `trapentry.S` and `trap.c` and implement the features described above.*
 
