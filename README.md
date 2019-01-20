@@ -424,7 +424,18 @@ ret
 
 **Exercise 11.**  *Finish `set_pgfault_handler()` in `lib/pgfault.c`.*
 
+In `set_pgfault_handler()`, I added code:
 
+```c
+int r = sys_page_alloc(sys_getenvid(), (void *) (UXSTACKTOP - PGSIZE), PTE_W | PTE_U);
+if (r < 0) {
+	sys_env_destroy(sys_getenvid());
+}
+r = sys_env_set_pgfault_upcall(sys_getenvid(), handler);
+if (r < 0) {
+	sys_env_destroy(sys_getenvid());
+}
+```
 
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
 
