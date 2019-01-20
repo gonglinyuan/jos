@@ -104,7 +104,7 @@ fork(void)
 		thisenv = envs + ENVX(sys_getenvid());
 		return 0;
 	}
-	for (uintptr_t addr = 0; addr <= USTACKTOP; addr += PGSIZE) {
+	for (uintptr_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
 		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_U)) {
 			duppage(child_id, PGNUM(addr));
 		}
