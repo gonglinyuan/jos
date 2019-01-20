@@ -69,11 +69,11 @@ _pgfault_upcall:
 	subl $0x4, 0x30(%esp)
 	movl 0x30(%esp), %ecx
 	movl %eax, (%ecx)
-	addl $0x8, %esp
 
 	// Restore the trap-time registers.  After you do this, you
 	// can no longer modify any general-purpose registers.
 	// LAB 4: Your code here.
+	addl $0x8, %esp
 	popal
 
 	// Restore eflags from the stack.  After you do this, you can
