@@ -322,7 +322,7 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 	}
 	if ((uintptr_t) srcva < UTOP) {
 		if (ROUNDUP(srcva, PGSIZE) == srcva && (perm & PTE_SYSCALL) == perm) {
-			struct PageInfo * page;
+			struct PageInfo *page;
 			pte_t * pte;
 			if ((page = page_lookup(curenv->env_pgdir, srcva, &pte))) {
 				if (!(perm & PTE_W) || (*pte & PTE_W)) {
@@ -390,6 +390,7 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
 	// Call the function corresponding to the 'syscallno' parameter.
 	// Return any appropriate return value.
 	// LAB 3: Your code here.
+	printf("syscall %u\n", syscallno);
 
 	switch (syscallno) {
 	case SYS_cputs:
