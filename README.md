@@ -165,6 +165,182 @@ ENV_CREATE(user_yield, ENV_TYPE_USER);
 ENV_CREATE(user_yield, ENV_TYPE_USER);
 ```
 
+When I run `make qemu-nox CPUS=2`, the output is:
+
+```
+Physical memory: 131072K available, base = 640K, extended = 130432K
+check_page_free_list() succeeded!
+check_page_alloc() succeeded!
+check_page() succeeded!
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!
+SMP: CPU 0 found 2 CPU(s)
+enabled interrupts: 1 2
+SMP: CPU 1 starting
+[00000000] new env 00001000
+[00000000] new env 00001001
+[00000000] new env 00001002
+Hello, I am environment 00001001.
+Hello, I am environment 00001002.
+Back in environment 00001001, iteration 0.
+Hello, I am environment 00001000.
+Back in environment 00001002, iteration 0.
+Back in environment 00001001, iteration 1.
+Back in environment 00001000, iteration 0.
+Back in environment 00001002, iteration 1.
+Back in environment 00001001, iteration 2.
+Back in environment 00001000, iteration 1.
+Back in environment 00001002, iteration 2.
+Back in environment 00001001, iteration 3.
+Back in environment 00001000, iteration 2.
+Back in environment 00001002, iteration 3.
+Back in environment 00001001, iteration 4.
+Back in environment 00001000, iteration 3.
+All done in environment 00001001.
+[00001001] exiting gracefully
+[00001001] free env 00001001
+Back in environment 00001002, iteration 4.
+Back in environment 00001000, iteration 4.
+All done in environment 00001002.
+All done in environment 00001000.
+[00001002] exiting gracefully
+[00001002] free env 00001002
+[00001000] exiting gracefully
+[00001000] free env 00001000
+No runnable environments in the system!
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+```
+
+**Question 3.** *In your implementation of `env_run()` you should have called `lcr3()`. Before and after the call to `lcr3()`, your code makes references (at least it should) to the variable `e`, the argument to `env_run`. Upon loading the `%cr3` register, the addressing context used by the MMU is instantly changed. But a virtual address (namely `e`) has meaning relative to a given address context--the address context specifies the physical address to which the virtual address maps. Why can the pointer `e` be dereferenced both before and after the addressing switch?*
+
+Because `e` is in kernel virtual memory. When mapping memories for user environment, we mapped identically for kernel virtual memory as `kern_pgdir`.
+
+**Question 4.** *Whenever the kernel switches from one environment to another, it must ensure the old environment's registers are saved so they can be restored properly later. Why? Where does this happen?*
+
+Because otherwise the local variables of the previous environment kept in the register will be corrupted by the new environment. It happens in `trap()` of `trap.c`:
+
+```c
+// Copy trap frame (which is currently on the stack)
+// into 'curenv->env_tf', so that running the environment
+// will restart at the trap point.
+curenv->env_tf = *tf;
+// The trapframe on the stack should be ignored from here on.
+tf = &curenv->env_tf;
+```
+
+**Exercise 7.** *Implement the system calls described above in `kern/syscall.c` and make sure `syscall()` calls them. You will need to use various functions in `kern/pmap.c` and `kern/env.c`, particularly `envid2env()`. For now, whenever you call `envid2env()`, pass 1 in the `checkperm` parameter. Be sure you check for any invalid system call arguments, returning `-E_INVAL` in that case. Test your JOS kernel with `user/dumbfork` and make sure it works before proceeding.*
+
+In `sys_exofork()`, I added:
+
+```c
+struct Env *env_ptr;
+int ret = env_alloc(&env_ptr, curenv->env_id);
+if (ret < 0) {  // on error
+	return ret;
+}
+env_ptr->env_status = ENV_NOT_RUNNABLE;
+env_ptr->env_tf = curenv->env_tf;
+// make child return 0
+env_ptr->env_tf.tf_regs.reg_eax = 0;
+return env_ptr->env_id;
+```
+
+In `sys_env_set_status`, I added:
+
+```c
+if (status != ENV_RUNNABLE || status != ENV_NOT_RUNNABLE) {
+	return -E_INVAL;
+}
+struct Env *env_ptr;
+int r = envid2env(envid, &env_ptr, 1);
+if (r < 0) {
+	return r;
+}
+env_ptr->env_status = status;
+return 0;
+```
+
+In `sys_page_alloc()`, I added:
+
+```c
+struct Env *env_ptr;
+int r = envid2env(envid, &env_ptr, 1);
+if (r < 0) {
+	return r;
+}
+if (va != ROUNDDOWN(va, PGSIZE) || va >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+	return -E_INVAL;
+}
+struct PageInfo *pp = page_alloc(perm);
+if (pp == NULL) {
+	return -E_NO_MEM;
+}
+r = page_insert(env_ptr->env_pgdir, pp, va, perm);
+if (r < 0) {
+	return r;
+}
+return 0;
+```
+
+In `sys_page_map()`, I added:
+
+```c
+struct Env *srcenv_ptr, *dstenv_ptr;
+int r = envid2env(srcenvid, &srcenv_ptr, 1);
+if (r < 0) {
+	return r;
+}
+r = envid2env(dstenvid, &dstenv_ptr, 1);
+if (r < 0) {
+	return r;
+}
+if (srcva != ROUNDDOWN(srcva) || srcva >= UTOP || dstva != ROUNDDOWN(dstva) || dstva >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+	return -E_INVAL;
+}
+pte_t *pte_ptr;
+struct PageInfo *pp = page_lookup(srcenv_ptr->env_pgdir, srcva, &pte_ptr);
+if (pp == NULL || ((perm & PTE_W) && !(*pte_ptr & PTE_W))) {
+	return -E_INVAL;
+}
+r = page_insert(dstenv_ptr->env_pgdir, pp, dstva, perm);
+if (r < 0) {
+	return r;
+}
+return 0;
+```
+
+In `sys_page_unmap()`, I added:
+
+```c
+struct Env *env_ptr;
+int r = envid2env(envid, &env_ptr, 1);
+if (r < 0) {
+	return r;
+}
+if (va != ROUNDDOWN(va, PGSIZE) || va >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+	return -E_INVAL;
+}
+page_remove(env_ptr->env_pgdir, va);
+return 0;
+```
+
+In `syscall()`, I added:
+
+```c
+case SYS_exofork:
+	return sys_exofork();
+case SYS_env_set_status:
+	return sys_env_set_status(a1, a2);
+case SYS_page_alloc:
+	return sys_page_alloc(a1, a2, a3);
+case SYS_page_map:
+	return sys_page_map(a1, a2, a3, a4, a5);
+case SYS_page_unmap:
+	return sys_page_unmap(a1, a2);
+```
+
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
 
 First, I added two monitor commands: `continue` and `stepi`.
