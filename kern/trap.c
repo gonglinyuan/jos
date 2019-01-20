@@ -344,9 +344,11 @@ page_fault_handler(struct Trapframe *tf)
 		if (UXSTACKTOP - PGSIZE <= tf->tf_esp && tf->tf_esp < UXSTACKTOP) {
 			// recursive
 			utf_addr = tf->tf_esp - sizeof(struct UTrapframe) - sizeof(uintptr_t);
+			cprintf("%u\n", utf_addr);
 		} else {
 			// non-recursive
 			utf_addr = UXSTACKTOP - sizeof(struct UTrapframe);
+			cprintf("%u\n", utf_addr);
 		}
 		user_mem_assert(curenv, (const void *) utf_addr, sizeof(struct UTrapframe), PTE_W);
 		struct UTrapframe *utf_ptr = (struct UTrapframe *) utf_addr;
