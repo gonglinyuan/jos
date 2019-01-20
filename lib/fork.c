@@ -110,7 +110,7 @@ fork(void)
 		}
 	}
 	// Exception stack
-	int r = sys_page_alloc(child_id, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_P);
+	int r = sys_page_alloc(child_id, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_W);
 	if (r < 0) return r;
 	extern void _pgfault_upcall();
 	sys_env_set_pgfault_upcall(child_id, _pgfault_upcall);
