@@ -224,7 +224,7 @@ sys_page_map(envid_t srcenvid, void *srcva,
 	if (r < 0) {
 		return r;
 	}
-	if (srcva != ROUNDDOWN(srcva, PGSIZE) || (uintptr_t) srcva >= UTOP || (uintptr_t) dstva != ROUNDDOWN(dstva, PGSIZE) || dstva >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+	if (srcva != ROUNDDOWN(srcva, PGSIZE) || (uintptr_t) srcva >= UTOP || dstva != ROUNDDOWN(dstva, PGSIZE) || dstva >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
 		return -E_INVAL;
 	}
 	pte_t *pte_ptr;
