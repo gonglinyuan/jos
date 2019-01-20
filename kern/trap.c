@@ -82,7 +82,7 @@ trap_init(void)
 		}
 	}
 	extern void handle_syscall();
-	SETGATE(idt[T_SYSCALL], 1, GD_KT, handle_syscall, 3);
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, handle_syscall, 3);
 	SETGATE(idt[IRQ_OFFSET + IRQ_TIMER], 0, GD_KT, idt_entries[IRQ_OFFSET + IRQ_TIMER], 0);
 
 	// Per-CPU setup 
