@@ -113,6 +113,41 @@ for (int i = 0; i < 20; ++i) {
 }
 ```
 
+**Question 2.** *It seems that using the big kernel lock guarantees that only one CPU can run the kernel code at a time. Why do we still need separate kernel stacks for each CPU? Describe a scenario in which using a shared kernel stack will go wrong, even with the protection of the big kernel lock.*
+
+When an interrupt occurs, CPU will push things into the current kernel stack. This step is before any lock acquiring and cannot be protected by the big kernel lock. Therefore,  we need to separate the kernel stacks of different CPUs.
+
+**Exercise 6.** *Implement round-robin scheduling in `sched_yield()` as described above. Don't forget to modify `syscall()` to dispatch `sys_yield()`.*
+
+*Make sure to invoke `sched_yield()` in `mp_main`.*
+
+In `sched_yield()` of `sched.c`, I added code:
+
+```c
+envid_t curenv_id = curenv ? curenv->env_id : 0;
+for (envid_t i = curenv_id + 1; i < NENV; ++i) {
+	if (envs[i].env_status == ENV_RUNNABLE) {
+		env_run(envs + i);
+	}
+}
+for (envid_t i = 0; i <= curenv_id; ++i) {
+	if (envs[i].env_status == ENV_RUNNABLE) {
+		env_run(envs + i);
+	}
+}
+if (curenv && curenv->env_status == ENV_RUNNING) {
+	env_run(curenv);
+}
+```
+
+In `syscall()` of `syscall.c`, I added code:
+
+```c
+case SYS_yield:
+	sys_yield();
+	return 0;
+```
+
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
 
 First, I added two monitor commands: `continue` and `stepi`.
