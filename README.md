@@ -334,11 +334,11 @@ case SYS_exofork:
 case SYS_env_set_status:
 	return sys_env_set_status(a1, a2);
 case SYS_page_alloc:
-	return sys_page_alloc(a1, a2, a3);
+	return sys_page_alloc(a1, (void *) a2, a3);
 case SYS_page_map:
-	return sys_page_map(a1, a2, a3, a4, a5);
+	return sys_page_map(a1, (void *) a2, a3, (void *) a4, a5);
 case SYS_page_unmap:
-	return sys_page_unmap(a1, a2);
+	return sys_page_unmap(a1, (void *) a2);
 ```
 
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
