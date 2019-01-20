@@ -326,7 +326,7 @@ sys_ipc_try_send(envid_t envid, uint32_t value, void *srcva, unsigned perm)
 			pte_t * pte;
 			if ((page = page_lookup(curenv->env_pgdir, srcva, &pte))) {
 				if (!(perm & PTE_W) || (*pte & PTE_W)) {
-					if (env->env_ipc_dstva < UTOP) {
+					if ((uintptr_t) env->env_ipc_dstva < UTOP) {
 						int r = page_insert(env->env_pgdir, page, env->env_ipc_dstva, perm);
 						if (r < 0) return r;
 					}
