@@ -390,6 +390,40 @@ if (curenv->env_pgfault_upcall != NULL) {
 }
 ```
 
+**Exercise 10.** *Implement the `_pgfault_upcall` routine in `lib/pfentry.S`. The interesting part is returning to the original point in the user code that caused the page fault. You'll return directly there, without going back through the kernel. The hard part is simultaneously switching stacks and re-loading the EIP.*
+
+In `pentry.S`, I added code:
+
+```assembly
+movl 0x28(%esp), %eax
+subl $0x4, 0x30(%esp)
+movl 0x30(%esp), %ecx
+movl %eax, (%ecx)
+addl $0x8, %esp
+
+// Restore the trap-time registers.  After you do this, you
+// can no longer modify any general-purpose registers.
+// LAB 4: Your code here.
+popal
+
+// Restore eflags from the stack.  After you do this, you can
+// no longer use arithmetic operations or anything else that
+// modifies eflags.
+// LAB 4: Your code here.
+addl $0x4, %esp
+popfl
+
+// Switch back to the adjusted trap-time stack.
+// LAB 4: Your code here.
+popl %esp
+
+// Return to re-execute the instruction that faulted.
+// LAB 4: Your code here.
+ret
+```
+
+**Exercise 11.**  *Finish `set_pgfault_handler()` in `lib/pgfault.c`.*
+
 
 
 **Challenge 2.** *Modify the JOS kernel monitor so that you can 'continue' execution from the current location (e.g., after the `int3`, if the kernel monitor was invoked via the breakpoint exception), and so that you can single-step one instruction at a time.* 
