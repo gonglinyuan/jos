@@ -270,7 +270,7 @@ int r = envid2env(envid, &env_ptr, 1);
 if (r < 0) {
 	return r;
 }
-if (va != ROUNDDOWN(va, PGSIZE) || va >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+if (va != ROUNDDOWN(va, PGSIZE) || (uintptr_t) va >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
 	return -E_INVAL;
 }
 struct PageInfo *pp = page_alloc(perm);
@@ -296,7 +296,7 @@ r = envid2env(dstenvid, &dstenv_ptr, 1);
 if (r < 0) {
 	return r;
 }
-if (srcva != ROUNDDOWN(srcva) || srcva >= UTOP || dstva != ROUNDDOWN(dstva) || dstva >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+if (srcva != ROUNDDOWN(srcva) || (uintptr_t) srcva >= UTOP || dstva != ROUNDDOWN(dstva) || (uintptr_t) dstva >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
 	return -E_INVAL;
 }
 pte_t *pte_ptr;
@@ -319,7 +319,7 @@ int r = envid2env(envid, &env_ptr, 1);
 if (r < 0) {
 	return r;
 }
-if (va != ROUNDDOWN(va, PGSIZE) || va >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
+if (va != ROUNDDOWN(va, PGSIZE) || (uintptr_t) va >= UTOP || ((perm & PTE_SYSCALL) != perm)) {
 	return -E_INVAL;
 }
 page_remove(env_ptr->env_pgdir, va);
