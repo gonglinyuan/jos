@@ -62,12 +62,12 @@ duppage(envid_t envid, unsigned pn)
 	// LAB 4: Your code here.
 	uintptr_t addr = pn * PGSIZE;
 	if ((uvpt[pn] & PTE_COW) || (uvpt[pn] & PTE_W)) {
-		r = sys_page_map(0, (void *) addr, envid, (void *) addr, PTE_U | PTE_COW);
+		r = sys_page_map(0, (void *) addr, envid, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
 		if (r < 0) return r;
-		r = sys_page_map(0, (void *) addr, 0, (void *) addr, PTE_U | PTE_COW);
+		r = sys_page_map(0, (void *) addr, 0, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
 		if (r < 0) return r;
 	} else {
-		r = sys_page_map(0, (void *) addr, envid, (void *) addr, PTE_U);
+		r = sys_page_map(0, (void *) addr, envid, (void *) addr, (uvpt[pn] & PTE_SYSCALL));
 		if (r < 0) return r;
 	}
 	return 0;
