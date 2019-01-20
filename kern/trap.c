@@ -74,7 +74,7 @@ trap_init(void)
 	// LAB 3: Your code here.
 
 	extern uint32_t idt_entries[];
-	for (int i = 0; i < 20; ++i) {
+	for (int i = 0; i < 48; ++i) {
 		if (i == T_BRKPT) {
 			SETGATE(idt[i], 0, GD_KT, idt_entries[i], 3);
 		} else {  // privileged
