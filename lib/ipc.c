@@ -53,6 +53,9 @@ ipc_send(envid_t to_env, uint32_t val, void *pg, int perm)
 {
 	// LAB 4: Your code here.
     int result;
+	if (pg == NULL) {
+		pg = (void *) UTOP;
+	}
     while ((result = sys_ipc_try_send(to_env, val, pg, perm)) == -E_IPC_NOT_RECV) {
         sys_yield();
     }
