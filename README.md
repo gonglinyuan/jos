@@ -126,7 +126,7 @@ When an interrupt occurs, CPU will push things into the current kernel stack. Th
 In `sched_yield()` of `sched.c`, I added code:
 
 ```c
-envid_t curenv_id = curenv ? curenv->env_id : 0;
+envid_t curenv_id = curenv ? ENVX(curenv->env_id) : 0;
 for (envid_t i = curenv_id + 1; i < NENV; ++i) {
 	if (envs[i].env_status == ENV_RUNNABLE) {
 		env_run(envs + i);

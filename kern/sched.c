@@ -32,18 +32,15 @@ sched_yield(void)
 	envid_t curenv_id = curenv ? ENVX(curenv->env_id) : 0;
 	for (envid_t i = curenv_id + 1; i < NENV; ++i) {
 		if (envs[i].env_status == ENV_RUNNABLE) {
-			cprintf("1 yield %u\n", curenv - envs);
 			env_run(envs + i);
 		}
 	}
 	for (envid_t i = 0; i <= curenv_id; ++i) {
 		if (envs[i].env_status == ENV_RUNNABLE) {
-			cprintf("1 yield %u\n", curenv - envs);
 			env_run(envs + i);
 		}
 	}
 	if (curenv && curenv->env_status == ENV_RUNNING) {
-		cprintf("2 yield %u\n", curenv - envs);
 		env_run(curenv);
 	}
 	
