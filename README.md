@@ -601,3 +601,35 @@ case SYS_ipc_recv:
 	return sys_ipc_recv((void *) a1);
 ```
 
+In `ipc_recv()`, I added code:
+
+```c
+if (!pg) {
+	pg = (void *) 0xFFFFFFFF;
+}
+if (sys_ipc_recv(pg)) {
+	*from_env_store = 0;
+	*perm_store = 0;
+	return -E_INVAL;
+}
+if (perm_store) {
+	*perm_store = thisenv->env_ipc_perm;
+}
+if (from_env_store) {
+	*from_env_store = thisenv->env_ipc_from;
+}
+return thisenv->env_ipc_value;
+```
+
+In `ipc_send()`, I added code:
+
+```c
+int result;
+while ((result = sys_ipc_try_send(to_env, val, pg, perm)) == -E_IPC_NOT_RECV) {
+	sys_yield();
+}
+if (result) {
+	panic("ipc_send: %e", result);
+}
+```
+
