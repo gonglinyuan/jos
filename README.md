@@ -1,18 +1,73 @@
 # Lab 1
 
+龚林源 1600012714
+
+**Environment.**
+
+- **CPU:** Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+- **Vendor:** VirtualBox
+- **Platform:** i686 (32-bit)
+- **OS:** Ubuntu 16.04.5 LTS
+- **OS Kernel:** Linux ubuntu-xenial 4.4.0-141-generic
+- **C Compiler:** gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.10)
+- **QEMU:** https://github.com/mit-pdos/6.828-qemu.git
+
 **Exercise 1.** *Familiarize yourself with the assembly language materials available on the 6.828 reference page. You don't have to read them now, but you'll almost certainly want to refer to some of this material when reading and writing x86 assembly.*
 *We do recommend reading the section "The Syntax" in Brennan's Guide to Inline Assembly. It gives a good (and quite brief) description of the AT&T assembly syntax we'll be using with the GNU assembler in JOS.*
 
 **Exercise 2.** *Use GDB's si (Step Instruction) command to trace into the ROM BIOS for a few more instructions, and try to guess what it might be doing. You might want to look at Phil Storrs I/O Ports Description, as well as other materials on the 6.828 reference materials page. No need to figure out all the details - just the general idea of what the BIOS is doing first.*
 
-1. Set up stack pointer (ss and esp)
-2. Enable A20 gate through system port 0x92, to make it possible to access 32-bit (4GB) address space rather than 20-bit (1MB) by default
-3. Load interrupt descriptor table
-4. Load global descriptor table, the data structure to hold information about the different memory segments code can access
-5. Switch from real mode to protected mode
-6. Switch to 32-bit mode by changing the CS to 0x8
-7. Set segment registers
-8. Output “SeaBIOS (version …” to the screen
+```assembly
+[f000:fff0]    0xffff0: ljmp   $0xf000,$0xe05b
+# Jump to a lower address to continue execution (because addresses after 0x100000 is not in BIOS ROM)
+[f000:e05b]    0xfe05b: cmpl   $0x0,%cs:0x6ac8
+[f000:e062]    0xfe062: jne    0xfd2e1
+[f000:e066]    0xfe066: xor    %dx,%dx
+[f000:e068]    0xfe068: mov    %dx,%ss
+# Set up the stack-segment register to 0
+[f000:e06a]    0xfe06a: mov    $0x7000,%esp
+# Set up the stack pointer to [0x0000:0x7000] = 0x7c00
+[f000:e070]    0xfe070: mov    $0xf34c2,%edx
+[f000:e076]    0xfe076: jmp    0xfd15c
+[f000:d15c]    0xfd15c: mov    %eax,%ecx
+[f000:d15f]    0xfd15f: cli
+# Disable hardware interrupts
+[f000:d160]    0xfd160: cld
+# Clear the DF flag (for string operations) in EFLAGS
+[f000:d161]    0xfd161: mov    $0x8f,%eax
+[f000:d167]    0xfd167: out    %al,$0x70
+# Disable NMI (Non-Maskable Interrupts) and select the 15th CMOS register
+[f000:d169]    0xfd169: in     $0x71,%al
+# Read this CMOS register (Shutdown Status Byte) into %al
+[f000:d16b]    0xfd16b: in     $0x92,%al
+[f000:d16d]    0xfd16d: or     $0x2,%al
+[f000:d16f]    0xfd16f: out    %al,$0x92
+# Try to use FAST A20 gate to quickly enable A20 line
+[f000:d171]    0xfd171: lidtw  %cs:0x6ab8
+[f000:d177]    0xfd177: lgdtw  %cs:0x6a74
+# Set up IDT and GDT
+[f000:d17d]    0xfd17d: mov    %cr0,%eax
+[f000:d180]    0xfd180: or     $0x1,%eax
+[f000:d184]    0xfd184: mov    %eax,%cr0
+# Switch from real mode to protected mode
+[f000:d187]    0xfd187: ljmpl  $0x8,$0xfd18f
+# Long jump to 32-bit code segment
+=> 0xfd18f:     mov    $0x10,%eax
+=> 0xfd194:     mov    %eax,%ds
+=> 0xfd196:     mov    %eax,%es
+=> 0xfd198:     mov    %eax,%ss
+=> 0xfd19a:     mov    %eax,%fs
+=> 0xfd19c:     mov    %eax,%gs
+# Set up segment registers
+...
+```
+
+Then, BIOS ROM:
+
+1. Initializes system devices such as VGA
+2. Outputs to VGA port and print "SeaBIOS (Version ...)" to the screen
+3. Loads the first sector of the disk into physical address `0x7c00`, checks that the last 2 bytes are  `0x55 0xAA`
+4. Jumps to the boot loader (0x7c00)
 
 **Exercise 3.** *Take a look at the lab tools guide, especially the section on GDB commands. Even if you're familiar with GDB, this includes some esoteric GDB commands that are useful for OS work.*
 
@@ -374,6 +429,40 @@ while (ebp) {
 }
 ```
 
+The output is:
+
+```
+entering test_backtrace 5
+entering test_backtrace 4
+entering test_backtrace 3
+entering test_backtrace 2
+entering test_backtrace 1
+entering test_backtrace 0
+Stack backtrace:
+  ebp f010ff18  eip f010007b  args 00000000 00000000 00000000 00000000 f0100949
+         kern/init.c:18: test_backtrace+59
+  ebp f010ff38  eip f0100068  args 00000000 00000001 f010ff78 00000000 f0100949
+         kern/init.c:16: test_backtrace+40
+  ebp f010ff58  eip f0100068  args 00000001 00000002 f010ff98 00000000 f0100949
+         kern/init.c:16: test_backtrace+40
+  ebp f010ff78  eip f0100068  args 00000002 00000003 f010ffb8 00000000 f0100949
+         kern/init.c:16: test_backtrace+40
+  ebp f010ff98  eip f0100068  args 00000003 00000004 00000000 00000000 00000000
+         kern/init.c:16: test_backtrace+40
+  ebp f010ffb8  eip f0100068  args 00000004 00000005 00000000 00010094 00010094
+         kern/init.c:16: test_backtrace+40
+  ebp f010ffd8  eip f01000d4  args 00000005 00001aac 00000640 00000000 00000000
+         kern/init.c:39: i386_init+64
+  ebp f010fff8  eip f010003e  args 00111021 00000000 00000000 00000000 00000000
+         kern/entry.S:83: <unknown>+0
+leaving test_backtrace 0
+leaving test_backtrace 1
+leaving test_backtrace 2
+leaving test_backtrace 3
+leaving test_backtrace 4
+leaving test_backtrace 5
+```
+
 **Challenge**. *Enhance the console to allow text to be printed in different colors.*
 
 1. Add a global variable in console.c
@@ -420,4 +509,45 @@ while (ebp) {
    cprintf("Test colors: %mRed %mGreen %mBlue\n", 0x100, 0x200, 0x400);
    ```
 
-   
+
+The result is:
+
+![1551756043842](C:\Users\gonglinyuan\AppData\Roaming\Typora\typora-user-images\1551756043842.png)
+
+**Grading.** This is the output of `make grade`:
+
+```
+vagrant@ubuntu-xenial:~/jos$ make grade
+make clean
+make[1]: Entering directory '/home/vagrant/jos'
+rm -rf obj .gdbinit jos.in qemu.log
+make[1]: Leaving directory '/home/vagrant/jos'
+./grade-lab1
+make[1]: Entering directory '/home/vagrant/jos'
++ as kern/entry.S
++ cc kern/entrypgdir.c
++ cc kern/init.c
++ cc kern/console.c
++ cc kern/monitor.c
++ cc kern/printf.c
++ cc kern/kdebug.c
++ cc lib/printfmt.c
++ cc lib/readline.c
++ cc lib/string.c
++ ld obj/kern/kernel
+ld: warning: section `.bss' type changed to PROGBITS
++ as boot/boot.S
++ cc -Os boot/main.c
++ ld boot/boot
+boot block is 390 bytes (max 510)
++ mk obj/kern/kernel.img
+make[1]: Leaving directory '/home/vagrant/jos'
+running JOS: (0.5s)
+  printf: OK
+  backtrace count: OK
+  backtrace arguments: OK
+  backtrace symbols: OK
+  backtrace lines: OK
+Score: 100% (50/50)
+```
+
