@@ -1,5 +1,17 @@
 # Lab 2
 
+龚林源 1600012714
+
+**Environment.**
+
+- **CPU:** Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+- **Vendor:** VirtualBox
+- **Platform:** i686 (32-bit)
+- **OS:** Ubuntu 16.04.5 LTS
+- **OS Kernel:** Linux ubuntu-xenial 4.4.0-141-generic
+- **C Compiler:** gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.10)
+- **QEMU:** https://github.com/mit-pdos/6.828-qemu.git
+
 **Exercise 1.** *In the file `kern/pmap.c`, you must implement code for the following functions (probably in the order given).* 
 
 In `boot_alloc()` , I added code:
@@ -65,7 +77,7 @@ pp->pp_link = page_free_list;
 page_free_list = pp;  // add it to the front of the free list
 ```
 
-**Exercise 2.** *Look at chapters 5 and 6 of the [Intel 80386 Reference Manual](https://pdos.csail.mit.edu/6.828/2014/readings/i386/toc.htm), if you haven't done so already. Read the sections about page translation and page-based protection closely (5.2 and 6.4). We recommend that you also skim the sections about segmentation; while JOS uses paging for virtual memory and protection, segment translation and segment-based protection cannot be disabled on the x86, so you will need a basic understanding of it.* 
+**Exercise 2.** *Look at chapters 5 and 6 of the [Intel 80386 Reference Manual](https://pdos.csail.mit.edu/6.828/2014/readings/i386/toc.htm), if you haven't done so already. Read the sections about page translation and page-based protection closely (5.2 and 6.4). We recommend that you also skim the sections about segmentation; while JOS uses paging for virtual memory and protection, segment translation and segment-based protection cannot be disabled on the x86, so you will need a basic understanding of it.*
 
 **Exercise 3.** *While GDB can only access QEMU's memory by virtual address, it's often useful to be able to inspect physical memory while setting up virtual memory. Review the QEMU [monitor commands](https://pdos.csail.mit.edu/6.828/2014/labguide.html#qemu) from the lab tools guide, especially the `xp` command, which lets you inspect physical memory. To access the QEMU monitor, press Ctrl-a c in the terminal (the same binding returns to the serial console).*
 
@@ -153,24 +165,24 @@ tlb_invalidate(pgdir, va);
 return 0;
 ```
 
-To solve the problem that same `va` to be `page_insert()` twice, I increment `pp->pp_ref` before calling `page_remove` , so that `page_remove()` will not decrement `pp->pp_ref` to `0` and thereby it will not remove this page from the page table.
+To prevent the problem that when the same `va` is `page_insert()`ed twice, the physical page will be accidentally `page_free()`ed, I increment `pp->pp_ref` before calling `page_remove()`. In this way, `page_remove()` will not decrement `pp->pp_ref` to `0` when calling `page_decref()`, and hence `page_free(pp)` will not be accidentally triggered.
 
 **Exercise 5.** *Fill in the missing code in `mem_init()` after the call to `check_page()`.*
 
-To map the memory for user's read-only 'pages':
+To map the `pages` data structure (physical free page list and reference counts) to `UPAGES`, and to make it visible to users but read-only:
 
 ```c
 assert(npages * sizeof(struct PageInfo) <= PTSIZE);
 boot_map_region(kern_pgdir, UPAGES, npages * sizeof(struct PageInfo), PADDR(pages), PTE_U);
 ```
 
-To map the memory for the kernel stack:
+To map the memory of the kernel stack to the address space below `KSTACKTOP`, and to make it only visible to the kernel:
 
 ```c
 boot_map_region(kern_pgdir, KSTACKTOP - KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
 ```
 
-To map the memory above `KERNBASE` :
+To map the whole physical memory to address space above `KERNBASE`, and to make it only visible to the kernel:
 
 ```c
 boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, PTE_W);
@@ -184,11 +196,11 @@ boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, PTE_W);
    - 957-th entry, `0xEF400000` , points to the page directory (UVPT)
    - 956-th entry, `0xEF000000` , points to the page table of user's read-only image of `pages` array
    - 959-th entry, `0xEFF00000` , points to the page table containing the kernel stack
-   - 960-th entry to 1023-th entry, `0xF0000000` to `0xFFC00000` , points to the page table for bottom `4MB` to top `4MB` of physical memory
+   - 960-th entry to 1023-th entry, `0xF0000000` to `0xFFC00000` , points to the page table for bottom `4MB` to top `4MB` of physical memory (suppose the physical memory is `256MB`)
 
 2. *We have placed the kernel and user environment in the same address space. Why will user programs not be able to read or write the kernel's memory? What specific mechanisms protect the kernel memory?*
 
-   Because we set the permission bits in the PTE. When `PTE_U` is unset, users cannot read or write the memory in this page; when `PTE_U` is set but `PTE_W` is unset, this virtual page is read-only.
+   Because we set the permission bits in the PTE. When `PTE_U` is unset, users cannot read or write the memory in this page; when `PTE_U` is set but `PTE_W` is unset, this virtual page will be read-only to users.
 
 3. *What is the maximum amount of physical memory that this operating system can support? Why?*
 
@@ -232,7 +244,7 @@ boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, PTE_W);
 
    Jumps to high addresses.
 
-   This transition is necessary because we will use our `kern_pgdir` defined in this lab instead of `entry_pgdir` later. In `kern_pgdir` , the low memory is no longer mapped to the lowest `4MB` of the virtual address space.
+   This transition is necessary because we will use our `kern_pgdir` defined in this lab instead of `entry_pgdir`. In `kern_pgdir` , the low memory is no longer mapped to the lowest `4MB` of the virtual address space.
 
 **Challenge 2.** *Extend the JOS kernel monitor with commands to:*
 
@@ -275,7 +287,7 @@ boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, PTE_W);
   }
   ```
 
-  Then I wrote `mon_showmapping` :
+  Then I wrote `mon_showmapping()` :
 
   ```c
   int mon_showmapping(int argc, char **argv, struct Trapframe *tf) {
@@ -294,7 +306,7 @@ boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, PTE_W);
 
   It takes 2 arguments `adr_0` and `adr_1` , and prints virtual memory mapping between these two addresses.
 
-  To make `pgdir_walk` work, I had to include a header file:
+  To make `pgdir_walk()` work, I had to include a header file:
 
   ```c
   #include <kern/pmap.h>
@@ -482,3 +494,42 @@ boot_map_region(kern_pgdir, KERNBASE, -KERNBASE, 0, PTE_W);
   f011900c: 00000000
   f0119010: f0119008
   ```
+
+**Grading.** This is the output of `make grade`:
+
+```
+vagrant@ubuntu-xenial:~/jos$ make grade
+make clean
+make[1]: Entering directory '/home/vagrant/jos'
+rm -rf obj .gdbinit jos.in qemu.log
+make[1]: Leaving directory '/home/vagrant/jos'
+./grade-lab2
+make[1]: Entering directory '/home/vagrant/jos'
++ as kern/entry.S
++ cc kern/entrypgdir.c
++ cc kern/init.c
++ cc kern/console.c
++ cc kern/monitor.c
++ cc kern/pmap.c
++ cc kern/kclock.c
++ cc kern/printf.c
++ cc kern/kdebug.c
++ cc lib/printfmt.c
++ cc lib/readline.c
++ cc lib/string.c
++ ld obj/kern/kernel
+ld: warning: section `.bss' type changed to PROGBITS
++ as boot/boot.S
++ cc -Os boot/main.c
++ ld boot/boot
+boot block is 390 bytes (max 510)
++ mk obj/kern/kernel.img
+make[1]: Leaving directory '/home/vagrant/jos'
+running JOS: (0.9s)
+  Physical page allocator: OK
+  Page management: OK
+  Kernel page directory: OK
+  Page management 2: OK
+Score: 100% (70/70)
+```
+
