@@ -1,15 +1,27 @@
 # Lab 3
 
+龚林源 1600012714
+
+**Environment.**
+
+- **CPU:** Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+- **Vendor:** VirtualBox
+- **Platform:** i686 (32-bit)
+- **OS:** Ubuntu 16.04.5 LTS
+- **OS Kernel:** Linux ubuntu-xenial 4.4.0-141-generic
+- **C Compiler:** gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.10)
+- **QEMU:** https://github.com/mit-pdos/6.828-qemu.git
+
 **Exercise 1.** *Modify `mem_init()` in `kern/pmap.c` to allocate and map the `envs` array. This array consists of exactly `NENV` instances of the `Env` structure allocated much like how you allocated the `pages` array. Also like the `pages` array, the memory backing `envs` should also be mapped user read-only at `UENVS` (defined in `inc/memlayout.h`) so user processes can read from this array.* 
 
-In `mem_init()` , I added code:
+In `mem_init()` , I added code to allocate space for the `envs` array:
 
 ```c
 envs = (struct Env *) boot_alloc(NENV * sizeof(struct Env));
 memset(envs, 0, NENV * sizeof(struct Env));
 ```
 
-and
+Then, I mapped this array to the virtual address `UENVS`:
 
 ```c
 boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U);
@@ -28,6 +40,8 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
   	env_free_list = envs + i;
   }
   ```
+
+  The order is reversed to make the first element in `env_free_list` to be the first environment.
 
 - *`env_setup_vm()` : Allocate a page directory for a new environment and initialize the kernel portion of the new environment's address space.*
 
@@ -56,7 +70,7 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
 
 - *`load_icode()` : You will need to parse an ELF binary image, much like the boot loader already does, and load its contents into the user address space of a new environment.*
 
-  In `load_icode()`, I added code:
+  In `load_icode()`, I added code to load ELF binary:
 
   ```c
   struct Elf *eh = (struct Elf *) binary;
@@ -80,7 +94,7 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
   e->env_tf.tf_eip = eh->e_entry;  // set saved PC to the entrypoint of the ELF
   ```
 
-  and:
+  And then, allocate one page for the user stack:
 
   ```c
   region_alloc(e, (void *) (USTACKTOP - PGSIZE), PGSIZE);
@@ -105,12 +119,12 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
 
   ```c
   if (curenv && curenv->env_status == ENV_RUNNING) {
-  	curenv->env_status = ENV_RUNNABLE;
+  	curenv->env_status = ENV_RUNNABLE;  // switch out from the current environment
   }
   curenv = e;
   e->env_status = ENV_RUNNING;
   e->env_runs++;
-  lcr3(PADDR(e->env_pgdir));
+  lcr3(PADDR(e->env_pgdir));  // switch the address space
   env_pop_tf(&e->env_tf);
   ```
 
@@ -142,7 +156,16 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
   TRAPHANDLER_NOEC(handle_fperr, T_FPERR)
   ```
 
+  In order to know whether an interrupt has an error code or not, I referred to <https://pdos.csail.mit.edu/6.828/2018/readings/i386/s09_08.htm>.
+
 - *and you'll have to provide `_alltraps` which the `TRAPHANDLER` macros refer to.*
+
+  *Your `_alltraps` should:*
+
+  1. *push values to make the stack look like a struct Trapframe*
+  2. *load `GD_KD` into `%ds` and `%es*`
+  3. *`pushl %esp` to pass a pointer to the Trapframe as an argument to trap()*
+  4. *`call trap` (can `trap` ever return?)*
 
   In `trapentry.S` I added code:
 
@@ -203,7 +226,7 @@ boot_map_region(kern_pgdir, UENVS, NENV * sizeof(struct Env), PADDR(envs), PTE_U
 
 **Challenge 1.** *You probably have a lot of very similar code right now, between the lists of `TRAPHANDLER` in `trapentry.S` and their installations in `trap.c`. Clean this up. Change the macros in`trapentry.S` to automatically generate a table for `trap.c` to use.*
 
-In `trapentry.S`, I added code:
+In `trapentry.S`, I defined an array `idt_entries` that contains addresses of different interrupt handlers.
 
 ```assembly
 .data
@@ -231,7 +254,7 @@ idt_entries:
 	.long handle_simderr
 ```
 
-I modified `trap_init()` to be:
+Hence, in `trap.c`, I modified `trap_init()` to be:
 
 ```c
 extern uint32_t idt_entries[];
@@ -246,11 +269,11 @@ and eliminated duplicate codes.
 
 1. *What is the purpose of having an individual handler function for each exception/interrupt? (i.e., if all exceptions/interrupts were delivered to the same handler, what feature that exists in the current implementation could not be provided?)*
 
-   If we use an individual handler function for each exception/interrupt, we can safely let user apps deal with some of the exceptions and disallow user apps to catch other exceptions. Therefore, it is easier to provide protections.
+   If we use an individual handler function for each exception/interrupt, we can safely let user programs deal with some of the exceptions and disallow programs apps to catch other exceptions. Therefore, it is easier to provide protections.
 
-2. *Did you have to do anything to make the `user/softint` program behave correctly? The grade script expects it to produce a general protection fault (trap 13), but `softint`'s code says`int $14`. Why should this produce interrupt vector 13? What happens if the kernel actually allows `softint`'s `int $14` instruction to invoke the kernel's page fault handler (which is interrupt vector 14)?*
+2. *Did you have to do anything to make the `user/softint` program behave correctly? The grade script expects it to produce a general protection fault (trap 13), but `softint`'s code says `int $14`. Why should this produce interrupt vector 13? What happens if the kernel actually allows `softint`'s `int $14` instruction to invoke the kernel's page fault handler (which is interrupt vector 14)?*
 
-   The `int 14` produces interrupt vector 13 because the DPL for page fault handler is 0 (kernel privileged). So when CPU finds out that the user is calling `int 14`, it will trigger the general protection fault, which gives a trap number 13.
+   The `int 14` produces interrupt vector 13 because the DPL for page fault handler is 0, which means that it is a kernel privileged interrupt (so user programs are not allowed to trigger this interrupt with an `int` instruction). Therefore, when CPU finds out that the user program is calling `int 14`, it will trigger the general protection fault, which gives a trap number 13.
 
 **Exercise 5.** *Modify `trap_dispatch()` to dispatch page fault exceptions to `page_fault_handler()`.*
 
@@ -278,7 +301,7 @@ To make it callable from user-mode apps, I modified code in `trap_init()` as:
 
 ```c
 for (int i = 0; i < 20; ++i) {
-	if (i == T_BRKPT) {
+	if (i == T_BRKPT) {  // users can call this interrupt
 		SETGATE(idt[i], 0, GD_KT, idt_entries[i], 3);
 	} else {  // privileged
 		SETGATE(idt[i], 0, GD_KT, idt_entries[i], 0);
@@ -332,7 +355,7 @@ If the trap flag in `EFLAGS` is set, the processor will interrupt after executin
 
 Then, I added trap handler for `T_DEBUG`:
 
-In `trap_dispatch()` in `trap.c`, I modified the code to be:
+In `trap_dispatch()` in `trap.c`, I modified the code so that when a `T_DEBUG` happens, it also invokes the kernel monitor:
 
 ```c
 } else if (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG) {
@@ -418,9 +441,9 @@ Type 'help' for a list of commands.
 
 **Questions 2.**
 
-1. *The break point test case will either generate a break point exception or a general protection fault depending on how you initialized the break point entry in the IDT (i.e., your call to`SETGATE` from `trap_init`). Why? How do you need to set it up in order to get the breakpoint exception to work as specified above and what incorrect setup would cause it to trigger a general protection fault?*
+1. *The break point test case will either generate a break point exception or a general protection fault depending on how you initialized the break point entry in the IDT (i.e., your call to `SETGATE` from `trap_init`). Why? How do you need to set it up in order to get the breakpoint exception to work as specified above and what incorrect setup would cause it to trigger a general protection fault?*
 
-   If we pass `0` as `dpl` (privilege level) when calling `SETGATE`, the test case will generate a general protection fault because user-mode apps have no permission to execute `int 03h`. So we modified `dpl` to be `3`, then user-mode apps can enter the trap handler of break point exception correctly.
+   If we pass `0` as `dpl` (privilege level) when calling `SETGATE`, the test case will generate a general protection fault because user-mode programs have no permission to execute `int 03h`. So we modified `dpl` to be `3`, then user-mode programs can enter the trap handler of break point exception correctly.
 
 2. *What do you think is the point of these mechanisms, particularly in light of what the `user/softint` test program does?*
 
@@ -463,7 +486,7 @@ I modified `syscall()` in `syscall.c` to be:
 switch (syscallno) {
 case SYS_cputs:
 	sys_cputs((const char *) a1, a2);
-	return 0;
+	return 0;  // must return an integer (0)
 case SYS_cgetc:
 	return sys_cgetc();
 case SYS_getenvid:
@@ -477,7 +500,7 @@ default:
 
 **Exercise 8.** *Add the required code to the user library, then boot your kernel. You should see `user/hello` print "`hello, world`" and then print "`i am environment 00001000`". `user/hello` then attempts to "exit" by calling `sys_env_destroy()` (see `lib/libmain.c` and `lib/exit.c`).*
 
-In `libmain()`, I added code:
+In `libmain()`, I added code to set `thisenv` correctly:
 
 ```c
 thisenv = envs + ENVX(sys_getenvid());
@@ -502,22 +525,23 @@ thisenv = envs + ENVX(sys_getenvid());
   ```c
   const void *va_end = va + len;
   for (void *i = ROUNDDOWN(va, PGSIZE); i < va_end; i += PGSIZE) {
-  	if (i >= ULIM) {
+  	if (i >= ULIM) {  // in the kernel address space
   		user_mem_check_addr = (uintptr_t) MIN(i, va);
-  		return -E_FAULT;
+  		return -E_FAULT;  // report error
   	}
   	pte_t *pte_ptr;
   	struct PageInfo *pp = page_lookup(env->env_pgdir, i, &pte_ptr);
   	if (!pp || ((perm & (*pte_ptr)) != perm)) {  // perm in pte
+          // a page that is not allocated or is not accessible for user
   		user_mem_check_addr = (uintptr_t) MIN(i, va);
-  		return -E_FAULT;
+  		return -E_FAULT;  // report error
   	}
   }
   ```
 
 - *Change `kern/syscall.c` to sanity check arguments to system calls.*
 
-  In `sys_cputs()`, I added code:
+  In `sys_cputs()`, I added code to check `s`:
 
   ```c
   user_mem_assert(curenv, (const void *) s, len, PTE_U);
@@ -559,5 +583,97 @@ Incoming TRAP frame at 0xefffffbc
 [00001000] user_mem_check assertion failure for va f010000c
 [00001000] free env 00001000
 Destroyed the only environment - nothing more to do!
+```
+
+**Grading.** This is the output of `make grade`:
+
+```
+vagrant@ubuntu-xenial:~/jos$ make grade
+make clean
+make[1]: Entering directory '/home/vagrant/jos'
+rm -rf obj .gdbinit jos.in qemu.log
+make[1]: Leaving directory '/home/vagrant/jos'
+./grade-lab3
+make[1]: Entering directory '/home/vagrant/jos'
++ as kern/entry.S
++ cc kern/entrypgdir.c
++ cc kern/init.c
++ cc kern/console.c
++ cc kern/monitor.c
++ cc kern/pmap.c
++ cc kern/env.c
++ cc kern/kclock.c
++ cc kern/printf.c
++ cc kern/trap.c
++ as kern/trapentry.S
++ cc kern/syscall.c
++ cc kern/kdebug.c
++ cc lib/printfmt.c
++ cc lib/readline.c
++ cc lib/string.c
++ cc[USER] lib/console.c
++ cc[USER] lib/libmain.c
++ cc[USER] lib/exit.c
++ cc[USER] lib/panic.c
++ cc[USER] lib/printf.c
++ cc[USER] lib/printfmt.c
++ cc[USER] lib/readline.c
++ cc[USER] lib/string.c
++ cc[USER] lib/syscall.c
++ ar obj/lib/libjos.a
+ar: creating obj/lib/libjos.a
++ cc[USER] user/hello.c
++ as[USER] lib/entry.S
++ ld obj/user/hello
++ cc[USER] user/buggyhello.c
++ ld obj/user/buggyhello
++ cc[USER] user/buggyhello2.c
++ ld obj/user/buggyhello2
++ cc[USER] user/evilhello.c
++ ld obj/user/evilhello
++ cc[USER] user/testbss.c
++ ld obj/user/testbss
++ cc[USER] user/divzero.c
++ ld obj/user/divzero
++ cc[USER] user/breakpoint.c
++ ld obj/user/breakpoint
++ cc[USER] user/softint.c
++ ld obj/user/softint
++ cc[USER] user/badsegment.c
++ ld obj/user/badsegment
++ cc[USER] user/faultread.c
++ ld obj/user/faultread
++ cc[USER] user/faultreadkernel.c
++ ld obj/user/faultreadkernel
++ cc[USER] user/faultwrite.c
++ ld obj/user/faultwrite
++ cc[USER] user/faultwritekernel.c
++ ld obj/user/faultwritekernel
++ ld obj/kern/kernel
+ld: warning: section `.bss' type changed to PROGBITS
++ as boot/boot.S
++ cc -Os boot/main.c
++ ld boot/boot
+boot block is 390 bytes (max 510)
++ mk obj/kern/kernel.img
+make[1]: Leaving directory '/home/vagrant/jos'
+divzero: OK (1.9s)
+softint: OK (0.8s)
+badsegment: OK (1.0s)
+Part A score: 30/30
+
+faultread: OK (1.0s)
+faultreadkernel: OK (1.0s)
+faultwrite: OK (2.0s)
+faultwritekernel: OK (2.0s)
+breakpoint: OK (1.0s)
+testbss: OK (1.9s)
+hello: OK (2.0s)
+buggyhello: OK (1.1s)
+buggyhello2: OK (1.8s)
+evilhello: OK (2.1s)
+Part B score: 50/50
+
+Score: 100% (80/80)
 ```
 
