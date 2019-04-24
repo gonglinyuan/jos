@@ -1,5 +1,17 @@
 # Lab 4
 
+龚林源 1600012714
+
+**Environment.**
+
+- **CPU:** Intel(R) Core(TM) i7-6700HQ CPU @ 2.60GHz
+- **Vendor:** VirtualBox
+- **Platform:** i686 (32-bit)
+- **OS:** Ubuntu 16.04.5 LTS
+- **OS Kernel:** Linux ubuntu-xenial 4.4.0-141-generic
+- **C Compiler:** gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.10)
+- **QEMU:** https://github.com/mit-pdos/6.828-qemu.git
+
 **Exercise 1.** *Implement `mmio_map_region` in `kern/pmap.c`. To see how this is used, look at the beginning of `lapic_init` in `kern/lapic.c`.*
 
 In `mmio_map_region()` , I added code:

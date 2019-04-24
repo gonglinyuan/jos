@@ -597,7 +597,7 @@ mmio_map_region(physaddr_t pa, size_t size)
 	//
 	// Your code here:
 	physaddr_t pa_end = ROUNDUP(pa + size, PGSIZE), pa_start = ROUNDDOWN(pa, PGSIZE);
-	if (base - (pa_end - pa_start) > MMIOLIM || pa_end < pa_start) {
+	if (base + (pa_end - pa_start) > MMIOLIM || pa_end < pa_start) {
 		panic("mmio_map_region overflow %x %x", pa_start, pa_end);
 	}
 	boot_map_region(kern_pgdir, base, pa_end - pa_start, pa_start, PTE_PCD | PTE_PWT | PTE_W);
