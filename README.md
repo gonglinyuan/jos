@@ -507,7 +507,110 @@ return child_id;
 
 **Challenge 6.** *Implement a shared-memory `fork()` called `sfork()`. This version should have the parent and child share all their memory pages (so writes in one environment appear in the other) except for pages in the stack area, which should be treated in the usual copy-on-write manner. Modify `user/forktree.c` to use `sfork()` instead of regular `fork()`. Also, once you have finished implementing IPC in part C, use your `sfork()` to run `user/pingpongs`. You will have to find a new way to provide the functionality of the global `thisenv` pointer.*
 
+In `sfork()` of `lib/fork.c`, I added code:
 
+```c
+set_pgfault_handler(pgfault);
+envid_t child_id = sys_exofork();
+if (child_id < 0) {
+	return child_id;
+} else if (child_id == 0) {
+	set_pgfault_handler(pgfault);
+	// we have to replace thisenv with a macro to make it work properly
+	// thisenv = envs + ENVX(sys_getenvid());
+	return 0;
+}
+int r;
+// Below user stack: just map the page with the same permission
+for (uintptr_t addr = 0; addr + PGSIZE < USTACKTOP; addr += PGSIZE) {
+	if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_U)) {
+		r = sys_page_map(0, (void *) addr, child_id, (void *) addr, uvpt[PGNUM(addr)] & PTE_SYSCALL);
+		if (r < 0) return r;
+	}
+}
+// User stack: still copy-on-write
+r = duppage(child_id, PGNUM(USTACKTOP - PGSIZE));
+if (r < 0) return r;
+// User exception stack: allocate new page
+r = sys_page_alloc(child_id, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_W);
+if (r < 0) return r;
+extern void _pgfault_upcall();
+sys_env_set_pgfault_upcall(child_id, _pgfault_upcall);
+r = sys_env_set_status(child_id, ENV_RUNNABLE);
+if (r < 0) return r;
+return child_id;
+```
+
+If we implement `thisenv` as in `fork()`, it will not work properly, because `thisenv` is in the `.data` section of the user program, which will be shared between the parent process and the child environment (when we modify `thisenv` in the child environment, it will accidentally modify its parent's `thisenv`). To make `thisenv` work properly, I changed this variable to a macro:
+
+```c
+#define thisenv (envs + ENVX(sys_getenvid()))
+```
+
+Then I tested it on `forktree` and `pingpong`, and it worked properly:
+
+```
+[00000000] new env 00001000
+1000: I am ''
+[00001000] new env 00001001
+[00001000] new env 00001002
+1001: I am '0'
+[00001001] new env 00001003
+[00001001] new env 00001004
+1003: I am '00'
+[00001003] new env 00001005
+[00001000] exiting gracefully
+[00001000] free env 00001000
+1002: I am '1'
+[00001002] new env 00002000
+[00001003] new env 00001006
+1005: I am '000'
+[00001005] exiting gracefully
+[00001005] free env 00001005
+[00001002] new env 00002005
+2000: I am '10'
+[00002000] new env 00001007
+[00001001] exiting gracefully
+[00001001] free env 00001001
+1004: I am '01'
+[00001004] new env 00002001
+[00001003] exiting gracefully
+[00001003] free env 00001003
+1006: I am '001'
+[00001006] exiting gracefully
+[00001006] free env 00001006
+[00002000] new env 00002006
+[00001004] new env 00002003
+1007: I am '100'
+[00001007] exiting gracefully
+[00001007] free env 00001007
+2001: I am '010'
+[00002001] exiting gracefully
+[00002001] free env 00002001
+[00001002] exiting gracefully
+[00001002] free env 00001002
+2005: I am '11'
+[00002005] new env 00002002
+[00001004] exiting gracefully
+[00001004] free env 00001004
+2003: I am '011'
+[00002000] exiting gracefully
+[00002000] free env 00002000
+[00002005] new env 00003000
+2006: I am '101'
+[00002006] exiting gracefully
+[00002006] free env 00002006
+2002: I am '110'
+[00002002] exiting gracefully
+[00002002] free env 00002002
+[00002003] exiting gracefully
+[00002003] free env 00002003
+[00002005] exiting gracefully
+[00002005] free env 00002005
+3000: I am '111'
+[00003000] exiting gracefully
+[00003000] free env 00003000
+```
 
 **Exercise 13.** *Modify `kern/trapentry.S` and `kern/trap.c` to initialize the appropriate entries in the IDT and provide handlers for IRQs 0 through 15. Then modify the code in `env_alloc()`in `kern/env.c` to ensure that user environments are always run with interrupts enabled.*
 
@@ -638,5 +741,147 @@ while ((result = sys_ipc_try_send(to_env, val, pg, perm)) == -E_IPC_NOT_RECV) {
 if (result) {
 	panic("ipc_send: %e", result);
 }
+```
+
+**Grading.** This is the output of `make grade`:
+
+```
+vagrant@ubuntu-xenial:~/jos$ make grade
+make clean
+make[1]: Entering directory '/home/vagrant/jos'
+rm -rf obj .gdbinit jos.in qemu.log
+make[1]: Leaving directory '/home/vagrant/jos'
+./grade-lab4
+make[1]: Entering directory '/home/vagrant/jos'
++ as kern/entry.S
++ cc kern/entrypgdir.c
++ cc kern/init.c
++ cc kern/console.c
++ cc kern/monitor.c
++ cc kern/pmap.c
++ cc kern/env.c
++ cc kern/kclock.c
++ cc kern/picirq.c
++ cc kern/printf.c
++ cc kern/trap.c
++ as kern/trapentry.S
++ cc kern/sched.c
++ cc kern/syscall.c
++ cc kern/kdebug.c
++ cc lib/printfmt.c
++ cc lib/readline.c
++ cc lib/string.c
++ as kern/mpentry.S
++ cc kern/mpconfig.c
++ cc kern/lapic.c
++ cc kern/spinlock.c
++ cc[USER] lib/console.c
++ cc[USER] lib/libmain.c
++ cc[USER] lib/exit.c
++ cc[USER] lib/panic.c
++ cc[USER] lib/printf.c
++ cc[USER] lib/printfmt.c
++ cc[USER] lib/readline.c
++ cc[USER] lib/string.c
++ cc[USER] lib/syscall.c
++ cc[USER] lib/pgfault.c
++ as[USER] lib/pfentry.S
++ cc[USER] lib/fork.c
++ cc[USER] lib/ipc.c
++ ar obj/lib/libjos.a
+ar: creating obj/lib/libjos.a
++ cc[USER] user/hello.c
++ as[USER] lib/entry.S
++ ld obj/user/hello
++ cc[USER] user/buggyhello.c
++ ld obj/user/buggyhello
++ cc[USER] user/buggyhello2.c
++ ld obj/user/buggyhello2
++ cc[USER] user/evilhello.c
++ ld obj/user/evilhello
++ cc[USER] user/testbss.c
++ ld obj/user/testbss
++ cc[USER] user/divzero.c
++ ld obj/user/divzero
++ cc[USER] user/breakpoint.c
++ ld obj/user/breakpoint
++ cc[USER] user/softint.c
++ ld obj/user/softint
++ cc[USER] user/badsegment.c
++ ld obj/user/badsegment
++ cc[USER] user/faultread.c
++ ld obj/user/faultread
++ cc[USER] user/faultreadkernel.c
++ ld obj/user/faultreadkernel
++ cc[USER] user/faultwrite.c
++ ld obj/user/faultwrite
++ cc[USER] user/faultwritekernel.c
++ ld obj/user/faultwritekernel
++ cc[USER] user/idle.c
++ ld obj/user/idle
++ cc[USER] user/yield.c
++ ld obj/user/yield
++ cc[USER] user/dumbfork.c
++ ld obj/user/dumbfork
++ cc[USER] user/stresssched.c
++ ld obj/user/stresssched
++ cc[USER] user/faultdie.c
++ ld obj/user/faultdie
++ cc[USER] user/faultregs.c
++ ld obj/user/faultregs
++ cc[USER] user/faultalloc.c
++ ld obj/user/faultalloc
++ cc[USER] user/faultallocbad.c
++ ld obj/user/faultallocbad
++ cc[USER] user/faultnostack.c
++ ld obj/user/faultnostack
++ cc[USER] user/faultbadhandler.c
++ ld obj/user/faultbadhandler
++ cc[USER] user/faultevilhandler.c
++ ld obj/user/faultevilhandler
++ cc[USER] user/forktree.c
++ ld obj/user/forktree
++ cc[USER] user/sendpage.c
++ ld obj/user/sendpage
++ cc[USER] user/spin.c
++ ld obj/user/spin
++ cc[USER] user/fairness.c
++ ld obj/user/fairness
++ cc[USER] user/pingpong.c
++ ld obj/user/pingpong
++ cc[USER] user/pingpongs.c
++ ld obj/user/pingpongs
++ cc[USER] user/primes.c
++ ld obj/user/primes
++ ld obj/kern/kernel
++ as boot/boot.S
++ cc -Os boot/main.c
++ ld boot/boot
+boot block is 414 bytes (max 510)
++ mk obj/kern/kernel.img
+make[1]: Leaving directory '/home/vagrant/jos'
+dumbfork: OK (1.5s)
+Part A score: 5/5
+
+faultread: OK (1.4s)
+faultwrite: OK (1.3s)
+faultdie: OK (1.4s)
+faultregs: OK (1.4s)
+faultalloc: OK (2.2s)
+faultallocbad: OK (1.3s)
+faultnostack: OK (2.1s)
+faultbadhandler: OK (2.3s)
+faultevilhandler: OK (2.3s)
+forktree: OK (2.4s)
+Part B score: 50/50
+
+spin: OK (2.2s)
+stresssched: OK (2.4s)
+sendpage: OK (2.2s)
+pingpong: OK (2.4s)
+primes: OK (6.5s)
+Part C score: 25/25
+
+Score: 100% (80/80)
 ```
 
