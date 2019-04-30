@@ -65,14 +65,17 @@ _pgfault_upcall:
 	// ways as registers become unavailable as scratch space.
 	//
 	// LAB 4: Your code here.
+	// Next 2 lines: *trap_time_esp -= 4
 	movl 0x28(%esp), %eax
 	subl $0x4, 0x30(%esp)
+	// Next 2 lines: *trap_time_esp = trap_time_eip
 	movl 0x30(%esp), %ecx
 	movl %eax, (%ecx)
 
 	// Restore the trap-time registers.  After you do this, you
 	// can no longer modify any general-purpose registers.
 	// LAB 4: Your code here.
+	// Skip fault_va and tf_err
 	addl $0x8, %esp
 	popal
 
@@ -80,6 +83,7 @@ _pgfault_upcall:
 	// no longer use arithmetic operations or anything else that
 	// modifies eflags.
 	// LAB 4: Your code here.
+	// Skip eip
 	addl $0x4, %esp
 	popfl
 

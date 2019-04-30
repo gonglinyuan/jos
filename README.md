@@ -103,29 +103,6 @@ I added `unlock_kernel()` at:
 
 1. `env_run()` in `env.c`, before `env_pop_tf()`
 
-**Exercise 6.** *Modify `trap_dispatch()` to make breakpoint exceptions invoke the kernel monitor. You should now be able to get make grade to succeed on the `breakpoint` test.*
-
-In `trap_dispatch()`, I added code:
-
-```c
-} else if (tf->tf_trapno == T_BRKPT) {
-	monitor(tf);
-	return;
-}
-```
-
-To make it callable from user-mode apps, I modified code in `trap_init()` as:
-
-```c
-for (int i = 0; i < 20; ++i) {
-	if (i == T_BRKPT) {
-		SETGATE(idt[i], 0, GD_KT, idt_entries[i], 3);
-	} else {  // privileged
-		SETGATE(idt[i], 0, GD_KT, idt_entries[i], 0);
-	}
-}
-```
-
 **Question 2.** *It seems that using the big kernel lock guarantees that only one CPU can run the kernel code at a time. Why do we still need separate kernel stacks for each CPU? Describe a scenario in which using a shared kernel stack will go wrong, even with the protection of the big kernel lock.*
 
 When an interrupt occurs, CPU will push things into the current kernel stack. This step is before any lock acquiring and cannot be protected by the big kernel lock. Therefore,  we need to separate the kernel stacks of different CPUs.
@@ -150,6 +127,7 @@ for (envid_t i = 0; i <= curenv_id; ++i) {
 		env_run(envs + i);
 	}
 }
+// If no other environment can run, run itself again
 if (curenv && curenv->env_status == ENV_RUNNING) {
 	env_run(curenv);
 }
@@ -228,7 +206,7 @@ Type 'help' for a list of commands.
 
 **Question 3.** *In your implementation of `env_run()` you should have called `lcr3()`. Before and after the call to `lcr3()`, your code makes references (at least it should) to the variable `e`, the argument to `env_run`. Upon loading the `%cr3` register, the addressing context used by the MMU is instantly changed. But a virtual address (namely `e`) has meaning relative to a given address context--the address context specifies the physical address to which the virtual address maps. Why can the pointer `e` be dereferenced both before and after the addressing switch?*
 
-Because `e` is in kernel virtual memory. When mapping memories for user environment, we mapped identically for kernel virtual memory as `kern_pgdir`.
+Because `e` points to an address above `UENVS`, which in the kernel virtual memory. When mapping memories for user environments, we mapped kernel virtual memory (all addresses above `UTOP`) identically as in `kern_pgdir`.
 
 **Question 4.** *Whenever the kernel switches from one environment to another, it must ensure the old environment's registers are saved so they can be restored properly later. Why? Where does this happen?*
 
@@ -365,6 +343,8 @@ if (r < 0) {
 	return r;
 }
 env_ptr->env_pgfault_upcall = func;
+// Assert that the user has permission to execute at func
+user_mem_assert(env_ptr, func, 1, 0);
 return 0;
 ```
 
@@ -408,21 +388,31 @@ if (curenv->env_pgfault_upcall != NULL) {
 In `pentry.S`, I added code:
 
 ```assembly
+// Throughout the remaining code, think carefully about what
+// registers are available for intermediate calculations.  You
+// may find that you have to rearrange your code in non-obvious
+// ways as registers become unavailable as scratch space.
+//
+// LAB 4: Your code here.
+// Next 2 lines: *trap_time_esp -= 4
 movl 0x28(%esp), %eax
 subl $0x4, 0x30(%esp)
+// Next 2 lines: *trap_time_esp = trap_time_eip
 movl 0x30(%esp), %ecx
 movl %eax, (%ecx)
-addl $0x8, %esp
 
 // Restore the trap-time registers.  After you do this, you
 // can no longer modify any general-purpose registers.
 // LAB 4: Your code here.
+// Skip fault_va and tf_err
+addl $0x8, %esp
 popal
 
 // Restore eflags from the stack.  After you do this, you can
 // no longer use arithmetic operations or anything else that
 // modifies eflags.
 // LAB 4: Your code here.
+// Skip eip
 addl $0x4, %esp
 popfl
 

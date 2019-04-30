@@ -40,6 +40,7 @@ sched_yield(void)
 			env_run(envs + i);
 		}
 	}
+	// If no other environment can run, run itself again
 	if (curenv && curenv->env_status == ENV_RUNNING) {
 		env_run(curenv);
 	}

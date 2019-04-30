@@ -144,6 +144,7 @@ sys_env_set_pgfault_upcall(envid_t envid, void *func)
 		return r;
 	}
 	env_ptr->env_pgfault_upcall = func;
+	// Assert that the user has permission to execute at func
 	user_mem_assert(env_ptr, func, 1, 0);
 	return 0;
 }
