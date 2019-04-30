@@ -123,17 +123,16 @@ fork(void)
 int
 sfork(void)
 {
-	// This part is the same as fork()
 	set_pgfault_handler(pgfault);
 	envid_t child_id = sys_exofork();
 	if (child_id < 0) {
 		return child_id;
 	} else if (child_id == 0) {
 		set_pgfault_handler(pgfault);
-		thisenv = envs + ENVX(sys_getenvid());
+		// we have to replace thisenv with a macro to make it work properly
+		// thisenv = envs + ENVX(sys_getenvid());
 		return 0;
 	}
-	// This part is different
 	int r;
 	// Below user stack: just map the page with the same permission
 	for (uintptr_t addr = 0; addr + PGSIZE < USTACKTOP; addr += PGSIZE) {
