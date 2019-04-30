@@ -505,6 +505,10 @@ if (r < 0) return r;
 return child_id;
 ```
 
+**Challenge 6.** *Implement a shared-memory `fork()` called `sfork()`. This version should have the parent and child share all their memory pages (so writes in one environment appear in the other) except for pages in the stack area, which should be treated in the usual copy-on-write manner. Modify `user/forktree.c` to use `sfork()` instead of regular `fork()`. Also, once you have finished implementing IPC in part C, use your `sfork()` to run `user/pingpongs`. You will have to find a new way to provide the functionality of the global `thisenv` pointer.*
+
+
+
 **Exercise 13.** *Modify `kern/trapentry.S` and `kern/trap.c` to initialize the appropriate entries in the IDT and provide handlers for IRQs 0 through 15. Then modify the code in `env_alloc()`in `kern/env.c` to ensure that user environments are always run with interrupts enabled.*
 
 *Also uncomment the `sti` instruction in `sched_halt()` so that idle CPUs unmask interrupts.*

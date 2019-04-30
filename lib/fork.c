@@ -123,6 +123,34 @@ fork(void)
 int
 sfork(void)
 {
-	panic("sfork not implemented");
-	return -E_INVAL;
+	// This part is the same as fork()
+	set_pgfault_handler(pgfault);
+	envid_t child_id = sys_exofork();
+	if (child_id < 0) {
+		return child_id;
+	} else if (child_id == 0) {
+		set_pgfault_handler(pgfault);
+		thisenv = envs + ENVX(sys_getenvid());
+		return 0;
+	}
+	// This part is different
+	int r;
+	// Below user stack: just map the page with the same permission
+	for (uintptr_t addr = 0; addr + PGSIZE < USTACKTOP; addr += PGSIZE) {
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_U)) {
+			r = sys_page_map(0, (void *) addr, child_id, (void *) addr, uvpt[PGNUM(addr)] & PTE_SYSCALL);
+			if (r < 0) return r;
+		}
+	}
+	// User stack: still copy-on-write
+	r = duppage(child_id, PGNUM(USTACKTOP - PGSIZE));
+	if (r < 0) return r;
+	// User exception stack: allocate new page
+	r = sys_page_alloc(child_id, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_W);
+	if (r < 0) return r;
+	extern void _pgfault_upcall();
+	sys_env_set_pgfault_upcall(child_id, _pgfault_upcall);
+	r = sys_env_set_status(child_id, ENV_RUNNABLE);
+	if (r < 0) return r;
+	return child_id;
 }
