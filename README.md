@@ -18,9 +18,10 @@ In `mmio_map_region()` , I added code:
 
 ```c
 physaddr_t pa_end = ROUNDUP(pa + size, PGSIZE), pa_start = ROUNDDOWN(pa, PGSIZE);
-if (base - (pa_end - pa_start) > MMIOLIM || pa_end < pa_start) {
+if (base + (pa_end - pa_start) > MMIOLIM || pa_end < pa_start) {  // overflow or underflow
 	panic("mmio_map_region overflow %x %x", pa_start, pa_end);
 }
+// disable cache and write-through
 boot_map_region(kern_pgdir, base, pa_end - pa_start, pa_start, PTE_PCD | PTE_PWT | PTE_W);
 base += pa_end - pa_start;
 return (void *)(base - (pa_end - pa_start));
@@ -37,7 +38,7 @@ if ((PGSIZE <= pa && pa < npages_basemem * PGSIZE && (pa != MPENTRY_PADDR)) || (
 **Question 1.** *Compare `kern/mpentry.S` side by side with `boot/boot.S`. Bearing in mind that `kern/mpentry.S` is compiled and linked to run above `KERNBASE` just like everything else in the kernel, what is the purpose of macro `MPBOOTPHYS`? Why is it necessary in `kern/mpentry.S` but not in `boot/boot.S`? In other words, what could go wrong if it were omitted in `kern/mpentry.S`?*
 
 - `MPBOOTPHYS()` maps the relative address in `mpentry.S` to its absolute address starting from `MPENTRY_PADDR`  at compile time, because `mpentry.S` will be loaded to `MPENTRY_PADDR`.
-- When compiling `boot.S`, the linker link its symbols to low addresses. When loading `boot.S`, we can just load it at low addresses and run it. However, `mpentry.S` also loads at low addresses but linked to high addresses, so we need `MPBOOTPHYS()` to map back to low addresses.
+- When compiling `boot.S`, the linker link its symbols to low addresses. When loading `boot.S`, we can just load it at low addresses and run it. However, `mpentry.S` also loads at low addresses (`MPENTRY_PADDR`) but linked to high addresses (`mpentry_start`), so we need `MPBOOTPHYS()` to map back to low addresses.
 
 **Exercise 3.** *Modify `mem_init_mp()` (in `kern/pmap.c`) to map per-CPU stacks starting at `KSTACKTOP`, as shown in `inc/memlayout.h`. The size of each stack is `KSTKSIZE` bytes plus `KSTKGAP` bytes of unmapped guard pages.*
 

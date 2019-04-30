@@ -597,9 +597,10 @@ mmio_map_region(physaddr_t pa, size_t size)
 	//
 	// Your code here:
 	physaddr_t pa_end = ROUNDUP(pa + size, PGSIZE), pa_start = ROUNDDOWN(pa, PGSIZE);
-	if (base + (pa_end - pa_start) > MMIOLIM || pa_end < pa_start) {
+	if (base + (pa_end - pa_start) > MMIOLIM || pa_end < pa_start) {  // overflow or underflow
 		panic("mmio_map_region overflow %x %x", pa_start, pa_end);
 	}
+	// disable cache and write-through
 	boot_map_region(kern_pgdir, base, pa_end - pa_start, pa_start, PTE_PCD | PTE_PWT | PTE_W);
 	base += pa_end - pa_start;
 	return (void *)(base - (pa_end - pa_start));
