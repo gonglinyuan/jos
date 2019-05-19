@@ -68,7 +68,7 @@ bc_pgfault(struct UTrapframe *utf)
 	void *tmp_addr;
 	if (cached_block_num == MAX_CACHED_BLOCKS) {
 		// If the cache is full, evict one page
-		while (true) {
+		for (;; cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS) {
 			tmp_addr = cached_block[cached_block_next];
 			if (((uint32_t) tmp_addr - DISKMAP) / BLKSIZE <= 1) {
 				// Skip superblock
@@ -92,7 +92,6 @@ bc_pgfault(struct UTrapframe *utf)
 				--cached_block_num;
 				break;
 			}
-			cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS;
 		}
 		i = cached_block_next;
 		cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS;
