@@ -36,7 +36,8 @@ FSIMGTXTFILES :=	$(FSIMGTXTFILES) \
 			fs/lorem \
 			fs/script \
 			fs/testshell.key \
-			fs/testshell.sh
+			fs/testshell.sh \
+			fs/largefile
 
 
 FSIMGFILES := $(FSIMGTXTFILES) $(USERAPPS)

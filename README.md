@@ -65,7 +65,7 @@ In `bc.c`, I added:
 
 ```c
 // Challenge 2:
-#define MAX_CACHED_BLOCKS 256 // Maximum cached blocks.
+#define MAX_CACHED_BLOCKS 32 // Maximum cached blocks.
 static uint32_t cached_block_num = 0; // The number of cached blocks.
 static void *cached_block[MAX_CACHED_BLOCKS] = {NULL}; // The vaddr of cached blocks.
 static uint32_t cached_block_next = 0; // The next block to evict.
