@@ -84,8 +84,8 @@ trap_init(void)
 	extern void handle_syscall();
 	SETGATE(idt[T_SYSCALL], 0, GD_KT, handle_syscall, 3);
 	SETGATE(idt[IRQ_OFFSET + IRQ_TIMER], 0, GD_KT, idt_entries[IRQ_OFFSET + IRQ_TIMER], 0);
-	SETGATE(idt[IRQ_OFFSET + IRQ_KBD], 0, idt_entries[IRQ_OFFSET + IRQ_KBD], 0);
-	SETGATE(idt[IRQ_OFFSET + IRQ_SERIAL], 0, idt_entries[IRQ_OFFSET + IRQ_SERIAL], 0);
+	SETGATE(idt[IRQ_OFFSET + IRQ_KBD], 0, GD_KT, idt_entries[IRQ_OFFSET + IRQ_KBD], 0);
+	SETGATE(idt[IRQ_OFFSET + IRQ_SERIAL], 0, GD_KT, idt_entries[IRQ_OFFSET + IRQ_SERIAL], 0);
 
 	// Per-CPU setup 
 	trap_init_percpu();
