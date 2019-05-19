@@ -287,6 +287,14 @@ if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
 }
 ```
 
+**Exercise 10.** *Add I/O redirection for < to `user/sh.c`.*
+
+*Test your implementation by typing sh <script into your shell*
+
+*Run make run-testshell to test your shell.*
+
+
+
 **Grading.** This is the output of `make grade`:
 
 ```
