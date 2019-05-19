@@ -235,7 +235,57 @@ K>
 
 *Likewise, implement `copy_shared_pages` in `lib/spawn.c`. It should loop through all page table entries in the current process (just like `fork` did), copying any page mappings that have the`PTE_SHARE` bit set into the child process.*
 
+I changed `duppage()` in `fork.c` to be:
 
+```c
+uintptr_t addr = pn * PGSIZE;
+if (((uvpt[pn] & PTE_COW) || (uvpt[pn] & PTE_W)) && !(uvpt[pn] & PTE_SHARE)) {
+    r = sys_page_map(0, (void *) addr, envid, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
+    if (r < 0) return r;
+    r = sys_page_map(0, (void *) addr, 0, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
+    if (r < 0) return r;
+} else {
+    r = sys_page_map(0, (void *) addr, envid, (void *) addr, (uvpt[pn] & PTE_SYSCALL));
+    if (r < 0) return r;
+}
+return 0;
+```
+
+In `copy_shared_pages()` of `spawn.c`, I added:
+
+```c
+int r;
+for (uintptr_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+    if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_U) && (uvpt[PGNUM(addr)] & PTE_SHARE)) {
+        if ((r = sys_page_map(0, (void *) addr, child, (void *) addr, (uvpt[PGNUM(addr)] & PTE_SYSCALL))) < 0) {
+            return r;
+        }
+    }
+}
+```
+
+**Exercise 9.** *In your `kern/trap.c`, call `kbd_intr` to handle trap `IRQ_OFFSET+IRQ_KBD` and `serial_intr` to handle trap `IRQ_OFFSET+IRQ_SERIAL`.*
+
+In `trap_init()` of `trap.c`, I added:
+
+```c
+SETGATE(idt[IRQ_OFFSET + IRQ_KBD], 0, idt_entries[IRQ_OFFSET + IRQ_KBD], 0);
+SETGATE(idt[IRQ_OFFSET + IRQ_SERIAL], 0, idt_entries[IRQ_OFFSET + IRQ_SERIAL], 0);
+```
+
+In `trap_dispatch()` of `trap.c`, I added:
+
+```c
+if (tf->tf_trapno == IRQ_OFFSET + IRQ_KBD) {
+    kbd_intr();
+    return;
+}
+
+if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
+    serial_intr();
+    return;
+}
+```
 
 **Grading.** This is the output of `make grade`:
 
