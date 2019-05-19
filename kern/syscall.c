@@ -140,7 +140,7 @@ sys_env_set_trapframe(envid_t envid, struct Trapframe *tf)
 	if ((r = envid2env(envid, &env_ptr, true)) < 0) {
 		return r;
 	}
-	user_mem_assert(envid, (const void *)tf, sizeof(struct Trapframe), 0);
+	user_mem_assert(curenv, (const void *)tf, sizeof(struct Trapframe), 0);
 	env_ptr->env_tf = *tf;
 	// Set IOPL to 0
 	env_ptr->env_tf.tf_eflags &= ~FL_IOPL_MASK;
