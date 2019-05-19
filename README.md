@@ -133,16 +133,41 @@ int r;
 if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0) {
     return r;
 }
-if ((r = file_read(o->o_file, ret->ret_buf, req->req_n, o->o_fd->fd_offset)) < 0) {
+if ((r = file_read(o->o_file, ret->ret_buf, MIN(req->req_n, sizeof(ret->ret_buf)), o->o_fd->fd_offset)) < 0) {
     return r;
 }
 o->o_fd->fd_offset += r;
 return r;
 ```
 
+I make sure that the number of bytes we read from the file is no more than the size of the provided buffer.
+
 **Exercise 6.** *Implement `serve_write` in `fs/serv.c` and `devfile_write` in `lib/file.c`.*
 
+In `serve_write()` of `fs.c`, I added:
 
+```c
+struct OpenFile *o;
+int r;
+if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0) {
+	return r;
+}
+if ((r = file_write(o->o_file, req->req_buf, MIN(req->req_n, sizeof(req->req_buf)), o->o_fd->fd_offset)) < 0) {
+	return r;
+}
+o->o_fd->fd_offset += r;
+return r;
+```
+
+In `devfile_write()` of `file.c`, I added:
+
+```c
+fsipcbuf.write.req_fileid = fd->fd_file.id;
+n = MIN(n, sizeof(fsipcbuf.write.req_buf));
+fsipcbuf.write.req_n = n;
+memmove(fsipcbuf.write.req_buf, buf, n);
+return fsipc(FSREQ_WRITE, NULL);
+```
 
 **Grading.** This is the output of `make grade`:
 
