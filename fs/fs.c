@@ -62,15 +62,12 @@ alloc_block(void)
 	// super->s_nblocks blocks in the disk altogether.
 
 	// LAB 5: Your code here.
-	uint32_t blockno;
-	for (blockno = 0; blockno < super->s_nblocks; blockno += 32) {
-		if (bitmap[blockno / 32] == 0) {
-			// Continue searching if all 32 blocks is allocated
-			continue;
-		}
-		while (blockno < super->s_nblocks && !(bitmap[blockno / 32] & (1 << (blockno % 32)))) {
-			++blockno;
-		}
+	uint32_t blockno = 0;
+	while ((blockno < super->s_nblocks) && !bitmap[blockno / 32]) {
+		blockno += 32;
+	}
+	while ((blockno < super->s_nblocks) && !(bitmap[blockno / 32] & (1 << (blockno % 32)))) {
+		blockno += 1;
 	}
 	if (blockno >= super->s_nblocks) {
 		return -E_NO_DISK;
