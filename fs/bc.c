@@ -102,6 +102,7 @@ bc_pgfault(struct UTrapframe *utf)
 	}
 	cached_block[i] = addr;
 	++cached_block_num;
+	cprintf("cached block num = %d\n", cached_block_num);
 
 	if ((r = sys_page_alloc(0, addr, PTE_U | PTE_W)) < 0) {
 		panic("in bc_pgfault, sys_page_alloc: %e", r);
