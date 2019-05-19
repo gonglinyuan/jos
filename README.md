@@ -81,7 +81,47 @@ return blockno;
 
 **Exercise 4.** *Implement `file_block_walk` and `file_get_block`. `file_block_walk` maps from a block offset within a file to the pointer for that block in the `struct File` or the indirect block, very much like what `pgdir_walk` did for page tables. `file_get_block` goes one step further and maps to the actual disk block, allocating a new one if necessary.*
 
+In `file_block_walk()` of `fs.c`, I added:
 
+```c
+int r;
+if (filebno < NDIRECT) {
+    *ppdiskbno = f->f_direct + filebno;
+} else if (filebno < NDIRECT + NINDIRECT) {
+    if (!f->f_indirect) {
+        if (alloc) {
+            if ((r = alloc_block()) < 0) {
+                return r;
+            }
+            f->f_indirect = r;
+        } else {
+            return -E_NOT_FOUND;
+        }
+    }
+    *ppdiskbno = ((uint32_t *) diskaddr(f->f_indirect)) + (filebno - NDIRECT);
+} else { // filebno >= NDIRECT + NINDIRECT
+    return -E_INVAL;
+}
+return 0;
+```
+
+In `file_get_block()` of `fs.c`, I added:
+
+```c
+int r;
+uint32_t *ppdiskbno;
+if ((r = file_block_walk(f, filebno, &ppdiskbno, true)) < 0) {
+    return r;
+}
+if (!(*ppdiskbno)) {
+    if ((r = alloc_block()) < 0) {
+        return r;
+    }
+    *ppdiskbno = r;
+}
+*blk = diskaddr(*ppdiskbno);
+return 0;
+```
 
 **Grading.** This is the output of `make grade`:
 
