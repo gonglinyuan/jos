@@ -65,7 +65,7 @@ In `bc.c`, I added:
 
 ```c
 // Challenge 2:
-#define MAX_CACHED_BLOCKS 32 // Maximum cached blocks.
+#define MAX_CACHED_BLOCKS 256 // Maximum cached blocks.
 static uint32_t cached_block_num = 0; // The number of cached blocks.
 static void *cached_block[MAX_CACHED_BLOCKS] = {NULL}; // The vaddr of cached blocks.
 static uint32_t cached_block_next = 0; // The next block to evict.
@@ -86,8 +86,12 @@ int i;
 void *tmp_addr;
 if (cached_block_num == MAX_CACHED_BLOCKS) {
     // If the cache is full, evict one page
-    while (true) {
+    for (;; cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS) {
         tmp_addr = cached_block[cached_block_next];
+        if (((uint32_t) tmp_addr - DISKMAP) / BLKSIZE <= 1) {
+            // Skip superblock
+            continue;
+        }
         assert(va_is_mapped(tmp_addr));
         // If it is dirty, flush (because the following step will clear the dirty bit)
         if (va_is_dirty(tmp_addr)) {
@@ -99,14 +103,13 @@ if (cached_block_num == MAX_CACHED_BLOCKS) {
                 panic("in bc_pgfault, sys_page_map: %e", r);
         } else {
             // Evict this page
-            cprintf("evict %u\n", (uint32_t) tmp_addr);
+            // cprintf("evict %x\n", (uint32_t) tmp_addr);
             if ((r = sys_page_unmap(0, tmp_addr)) < 0)
                 panic("in bc_pgfault, sys_page_unmap: %e", r);
             cached_block[cached_block_next] = NULL;
             --cached_block_num;
             break;
         }
-        cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS;
     }
     i = cached_block_next;
     cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS;
@@ -120,9 +123,10 @@ if (cached_block_num == MAX_CACHED_BLOCKS) {
 }
 cached_block[i] = addr;
 ++cached_block_num;
+// cprintf("cached block num = %d\n", cached_block_num);
 ```
 
-
+To test its functionality, I added a large file `largefile` to `fs` directory, and added it into `fs\Makefrag` to put it into `disk 1` of JOS. Then, I run `make qemu-nox`, and typed `cat largefile > largefile2`. The program runs correctly with page eviction enabled.
 
 **Exercise 3.** *Use `free_block` as a model to implement `alloc_block` in `fs/fs.c`, which should find a free disk block in the bitmap, mark it used, and return the number of that block. When you allocate a block, you should immediately flush the changed bitmap block to disk with `flush_block`, to help file system consistency.*
 
@@ -458,7 +462,7 @@ make clean
 make[1]: Entering directory '/home/vagrant/jos'
 rm -rf obj .gdbinit jos.in qemu.log
 make[1]: Leaving directory '/home/vagrant/jos'
-./grade-lab4
+./grade-lab5
 make[1]: Entering directory '/home/vagrant/jos'
 + as kern/entry.S
 + cc kern/entrypgdir.c
@@ -482,6 +486,7 @@ make[1]: Entering directory '/home/vagrant/jos'
 + cc kern/mpconfig.c
 + cc kern/lapic.c
 + cc kern/spinlock.c
++ as[USER] lib/entry.S
 + cc[USER] lib/console.c
 + cc[USER] lib/libmain.c
 + cc[USER] lib/exit.c
@@ -495,10 +500,17 @@ make[1]: Entering directory '/home/vagrant/jos'
 + as[USER] lib/pfentry.S
 + cc[USER] lib/fork.c
 + cc[USER] lib/ipc.c
++ cc[USER] lib/args.c
++ cc[USER] lib/fd.c
++ cc[USER] lib/file.c
++ cc[USER] lib/fprintf.c
++ cc[USER] lib/pageref.c
++ cc[USER] lib/spawn.c
++ cc[USER] lib/pipe.c
++ cc[USER] lib/wait.c
 + ar obj/lib/libjos.a
 ar: creating obj/lib/libjos.a
 + cc[USER] user/hello.c
-+ as[USER] lib/entry.S
 + ld obj/user/hello
 + cc[USER] user/buggyhello.c
 + ld obj/user/buggyhello
@@ -560,35 +572,85 @@ ar: creating obj/lib/libjos.a
 + ld obj/user/pingpongs
 + cc[USER] user/primes.c
 + ld obj/user/primes
++ cc[USER] user/faultio.c
++ ld obj/user/faultio
++ cc[USER] user/spawnfaultio.c
++ ld obj/user/spawnfaultio
++ cc[USER] user/testfile.c
++ ld obj/user/testfile
++ cc[USER] user/spawnhello.c
++ ld obj/user/spawnhello
++ cc[USER] user/icode.c
++ ld obj/user/icode
++ cc[USER] fs/ide.c
++ cc[USER] fs/bc.c
++ cc[USER] fs/fs.c
++ cc[USER] fs/serv.c
++ cc[USER] fs/test.c
++ ld obj/fs/fs
++ cc[USER] user/testpteshare.c
++ ld obj/user/testpteshare
++ cc[USER] user/testfdsharing.c
++ ld obj/user/testfdsharing
++ cc[USER] user/testpipe.c
++ ld obj/user/testpipe
++ cc[USER] user/testpiperace.c
++ ld obj/user/testpiperace
++ cc[USER] user/testpiperace2.c
++ ld obj/user/testpiperace2
++ cc[USER] user/primespipe.c
++ ld obj/user/primespipe
++ cc[USER] user/testkbd.c
++ ld obj/user/testkbd
++ cc[USER] user/testshell.c
++ ld obj/user/testshell
 + ld obj/kern/kernel
 + as boot/boot.S
 + cc -Os boot/main.c
 + ld boot/boot
 boot block is 414 bytes (max 510)
 + mk obj/kern/kernel.img
++ mk obj/fs/fsformat
++ cc[USER] user/init.c
++ ld obj/user/init
++ cc[USER] user/cat.c
++ ld obj/user/cat
++ cc[USER] user/echo.c
++ ld obj/user/echo
++ cc[USER] user/ls.c
++ ld obj/user/ls
++ cc[USER] user/lsfd.c
++ ld obj/user/lsfd
++ cc[USER] user/num.c
++ ld obj/user/num
++ cc[USER] user/sh.c
++ ld obj/user/sh
++ mk obj/fs/clean-fs.img
++ cp obj/fs/clean-fs.img obj/fs/fs.img
 make[1]: Leaving directory '/home/vagrant/jos'
-dumbfork: OK (1.5s)
-Part A score: 5/5
-
-faultread: OK (1.4s)
-faultwrite: OK (1.3s)
-faultdie: OK (1.4s)
-faultregs: OK (1.4s)
-faultalloc: OK (2.2s)
-faultallocbad: OK (1.3s)
-faultnostack: OK (2.1s)
-faultbadhandler: OK (2.3s)
-faultevilhandler: OK (2.3s)
-forktree: OK (2.4s)
-Part B score: 50/50
-
-spin: OK (2.2s)
-stresssched: OK (2.4s)
-sendpage: OK (2.2s)
-pingpong: OK (2.4s)
-primes: OK (6.5s)
-Part C score: 25/25
-
-Score: 100% (80/80)
+internal FS tests [fs/test.c]: OK (1.7s)
+  fs i/o: OK
+  check_bc: OK
+  check_super: OK
+  check_bitmap: OK
+  alloc_block: OK
+  file_open: OK
+  file_get_block: OK
+  file_flush/file_truncate/file rewrite: OK
+testfile: OK (2.3s)
+  serve_open/file_stat/file_close: OK
+  file_read: OK
+  file_write: OK
+  file_read after file_write: OK
+  open: OK
+  large file: OK
+spawn via spawnhello: OK (1.5s)
+Protection I/O space: OK (1.4s)
+PTE_SHARE [testpteshare]: OK (2.4s)
+PTE_SHARE [testfdsharing]: OK (1.4s)
+start the shell [icode]: Timeout! OK (31.1s)
+testshell: OK (3.9s)
+primespipe: OK (14.5s)
+Score: 100% (150/150)
 ```
 
