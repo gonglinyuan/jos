@@ -173,6 +173,68 @@ return fsipc(FSREQ_WRITE, NULL);
 
 *Test your code by running the `user/spawnhello` program from `kern/init.c`, which will attempt to spawn `/hello` from the file system.*
 
+In `sys_env_set_trapframe()` of `syscall.c`, I added:
+
+```c
+struct Env *env_ptr;
+int r;
+if ((r = envid2env(envid, &env_ptr, true)) < 0) {
+    return r;
+}
+user_mem_assert(curenv, (const void *)tf, sizeof(struct Trapframe), 0);
+env_ptr->env_tf = *tf;
+// Set IOPL to 0
+env_ptr->env_tf.tf_eflags &= ~FL_IOPL_MASK;
+// Enable interrupts
+env_ptr->env_tf.tf_eflags |= FL_IF;
+// Set CPL to 3
+env_ptr->env_tf.tf_cs |= 0x3;
+return 0;
+```
+
+Then I tested it with `make run-spawnhello-nox`, and the output is:
+
+```
+vagrant@ubuntu-xenial:~/jos$ make run-spawnhello-nox
+make[1]: Entering directory '/home/vagrant/jos'
+make[1]: 'obj/fs/fs.img' is up to date.
+make[1]: Leaving directory '/home/vagrant/jos'
+qemu-system-i386 -nographic -drive file=obj/kern/kernel.img,index=0,media=disk,format=raw -serial mon:stdio -gdb tcp::26000 -D qemu.log -smp 1 -drive file=obj/fs/fs.img,index=1,media=disk,format=raw
+6828 decimal is 15254 octal!
+Physical memory: 131072K available, base = 640K, extended = 130432K
+check_page_free_list() succeeded!
+check_page_alloc() succeeded!
+check_page() succeeded!
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!
+SMP: CPU 0 found 1 CPU(s)
+enabled interrupts: 1 2 4
+i am parent environment 00001001
+FS is running
+FS can do I/O
+Device 1 presence: 1
+block cache is good
+superblock is good
+bitmap is good
+alloc_block is good
+file_open is good
+file_get_block is good
+file_flush is good
+file_truncate is good
+file rewrite is good
+hello, world
+i am environment 00001002
+No runnable environments in the system!
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+K> 
+```
+
+**Exercise 8.** *Change `duppage` in `lib/fork.c` to follow the new convention. If the page table entry has the `PTE_SHARE` bit set, just copy the mapping directly.*
+
+*Likewise, implement `copy_shared_pages` in `lib/spawn.c`. It should loop through all page table entries in the current process (just like `fork` did), copying any page mappings that have the`PTE_SHARE` bit set into the child process.*
+
 
 
 **Grading.** This is the output of `make grade`:
