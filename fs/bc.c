@@ -70,6 +70,10 @@ bc_pgfault(struct UTrapframe *utf)
 		// If the cache is full, evict one page
 		while (true) {
 			tmp_addr = cached_block[cached_block_next];
+			if (((uint32_t) tmp_addr - DISKMAP) / BLKSIZE <= 1) {
+				// Skip superblock
+				continue;
+			}
 			assert(va_is_mapped(tmp_addr));
 			// If it is dirty, flush (because the following step will clear the dirty bit)
 			if (va_is_dirty(tmp_addr)) {
