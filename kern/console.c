@@ -10,6 +10,8 @@
 #include <kern/trap.h>
 #include <kern/picirq.h>
 
+int cga_text_color = 0x700;
+
 static void cons_intr(int (*proc)(void));
 static void cons_putc(int c);
 
@@ -169,7 +171,7 @@ cga_putc(int c)
 {
 	// if no attribute given, then use black on white
 	if (!(c & ~0xFF))
-		c |= 0x0700;
+		c |= cga_text_color;
 
 	switch (c & 0xff) {
 	case '\b':

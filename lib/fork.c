@@ -25,6 +25,9 @@ pgfault(struct UTrapframe *utf)
 	//   (see <inc/memlayout.h>).
 
 	// LAB 4: Your code here.
+	if (!((err & FEC_PR) && (uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_COW))) {
+		panic("not COW pagefault");
+	}
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
 	// copy the data from the old page to the new page, then move the new
@@ -33,8 +36,11 @@ pgfault(struct UTrapframe *utf)
 	//   You should make three system calls.
 
 	// LAB 4: Your code here.
-
-	panic("pgfault not implemented");
+	addr = ROUNDDOWN(addr, PGSIZE);
+	sys_page_alloc(0, PFTEMP, PTE_W | PTE_U);
+	memcpy(PFTEMP, addr, PGSIZE);
+	sys_page_map(0, PFTEMP, 0, addr, (uvpt[PGNUM(addr)] & PTE_SYSCALL & ~PTE_COW) | PTE_W);
+	sys_page_unmap(0, PFTEMP);
 }
 
 //
@@ -54,7 +60,16 @@ duppage(envid_t envid, unsigned pn)
 	int r;
 
 	// LAB 4: Your code here.
-	panic("duppage not implemented");
+	uintptr_t addr = pn * PGSIZE;
+	if ((uvpt[pn] & PTE_COW) || (uvpt[pn] & PTE_W)) {
+		r = sys_page_map(0, (void *) addr, envid, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
+		if (r < 0) return r;
+		r = sys_page_map(0, (void *) addr, 0, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
+		if (r < 0) return r;
+	} else {
+		r = sys_page_map(0, (void *) addr, envid, (void *) addr, (uvpt[pn] & PTE_SYSCALL));
+		if (r < 0) return r;
+	}
 	return 0;
 }
 
@@ -78,13 +93,63 @@ envid_t
 fork(void)
 {
 	// LAB 4: Your code here.
-	panic("fork not implemented");
+	set_pgfault_handler(pgfault);
+	envid_t child_id = sys_exofork();
+	if (child_id < 0) {
+		// Error
+		return child_id;
+	} else if (child_id == 0) {
+		// I am the child
+		set_pgfault_handler(pgfault);
+		thisenv = envs + ENVX(sys_getenvid());
+		return 0;
+	}
+	for (uintptr_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_U)) {
+			duppage(child_id, PGNUM(addr));
+		}
+	}
+	// Exception stack
+	int r = sys_page_alloc(child_id, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_W);
+	if (r < 0) return r;
+	extern void _pgfault_upcall();
+	sys_env_set_pgfault_upcall(child_id, _pgfault_upcall);
+	r = sys_env_set_status(child_id, ENV_RUNNABLE);
+	if (r < 0) return r;
+	return child_id;
 }
 
 // Challenge!
 int
 sfork(void)
 {
-	panic("sfork not implemented");
-	return -E_INVAL;
+	set_pgfault_handler(pgfault);
+	envid_t child_id = sys_exofork();
+	if (child_id < 0) {
+		return child_id;
+	} else if (child_id == 0) {
+		set_pgfault_handler(pgfault);
+		// we have to replace thisenv with a macro to make it work properly
+		// thisenv = envs + ENVX(sys_getenvid());
+		return 0;
+	}
+	int r;
+	// Below user stack: just map the page with the same permission
+	for (uintptr_t addr = 0; addr + PGSIZE < USTACKTOP; addr += PGSIZE) {
+		if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_U)) {
+			r = sys_page_map(0, (void *) addr, child_id, (void *) addr, uvpt[PGNUM(addr)] & PTE_SYSCALL);
+			if (r < 0) return r;
+		}
+	}
+	// User stack: still copy-on-write
+	r = duppage(child_id, PGNUM(USTACKTOP - PGSIZE));
+	if (r < 0) return r;
+	// User exception stack: allocate new page
+	r = sys_page_alloc(child_id, (void *)(UXSTACKTOP - PGSIZE), PTE_U | PTE_W);
+	if (r < 0) return r;
+	extern void _pgfault_upcall();
+	sys_env_set_pgfault_upcall(child_id, _pgfault_upcall);
+	r = sys_env_set_status(child_id, ENV_RUNNABLE);
+	if (r < 0) return r;
+	return child_id;
 }
