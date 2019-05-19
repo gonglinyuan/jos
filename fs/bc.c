@@ -85,7 +85,7 @@ bc_pgfault(struct UTrapframe *utf)
 					panic("in bc_pgfault, sys_page_map: %e", r);
 			} else {
 				// Evict this page
-				cprintf("evict %x\n", (uint32_t) tmp_addr);
+				// cprintf("evict %x\n", (uint32_t) tmp_addr);
 				if ((r = sys_page_unmap(0, tmp_addr)) < 0)
 					panic("in bc_pgfault, sys_page_unmap: %e", r);
 				cached_block[cached_block_next] = NULL;
@@ -105,7 +105,7 @@ bc_pgfault(struct UTrapframe *utf)
 	}
 	cached_block[i] = addr;
 	++cached_block_num;
-	cprintf("cached block num = %d\n", cached_block_num);
+	// cprintf("cached block num = %d\n", cached_block_num);
 
 	if ((r = sys_page_alloc(0, addr, PTE_U | PTE_W)) < 0) {
 		panic("in bc_pgfault, sys_page_alloc: %e", r);
