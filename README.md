@@ -169,6 +169,12 @@ memmove(fsipcbuf.write.req_buf, buf, n);
 return fsipc(FSREQ_WRITE, NULL);
 ```
 
+**Exercise 7.** *`spawn` relies on the new syscall `sys_env_set_trapframe` to initialize the state of the newly created environment. Implement `sys_env_set_trapframe` in `kern/syscall.c` (don't forget to dispatch the new system call in `syscall()`).*
+
+*Test your code by running the `user/spawnhello` program from `kern/init.c`, which will attempt to spawn `/hello` from the file system.*
+
+
+
 **Grading.** This is the output of `make grade`:
 
 ```
