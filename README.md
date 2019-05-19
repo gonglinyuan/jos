@@ -123,6 +123,27 @@ if (!(*ppdiskbno)) {
 return 0;
 ```
 
+**Exercise 5.** *Implement `serve_read` in `fs/serv.c`.*
+
+In `serve_read()` of `fs.c`, I added:
+
+```c
+struct OpenFile *o;
+int r;
+if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0) {
+    return r;
+}
+if ((r = file_read(o->o_file, ret->ret_buf, req->req_n, o->o_fd->fd_offset)) < 0) {
+    return r;
+}
+o->o_fd->fd_offset += r;
+return r;
+```
+
+**Exercise 6.** *Implement `serve_write` in `fs/serv.c` and `devfile_write` in `lib/file.c`.*
+
+
+
 **Grading.** This is the output of `make grade`:
 
 ```
