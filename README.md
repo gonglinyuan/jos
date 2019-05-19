@@ -59,6 +59,71 @@ if ((r = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL)) < 0) {
 }
 ```
 
+**Challenge 2.** *The block cache has no eviction policy. Once a block gets faulted in to it, it never gets removed and will remain in memory forevermore. Add eviction to the buffer cache. Using the `PTE_A` "accessed" bits in the page tables, which the hardware sets on any access to a page, you can track approximate usage of disk blocks without the need to modify every place in the code that accesses the disk map region. Be careful with dirty blocks.*
+
+In `bc.c`, I added:
+
+```c
+// Challenge 2:
+#define MAX_CACHED_BLOCKS 256 // Maximum cached blocks.
+static uint32_t cached_block_num = 0; // The number of cached blocks.
+static void *cached_block[MAX_CACHED_BLOCKS] = {NULL}; // The vaddr of cached blocks.
+static uint32_t cached_block_next = 0; // The next block to evict.
+
+// Return whether the accessed bit is true or not.
+bool
+va_is_accessed(void *va)
+{
+	return (uvpt[PGNUM(va)] & PTE_A) != 0;
+}
+```
+
+In `bc_pgfault()` of `bc.c`, I added:
+
+```c
+// Challenge 2:
+int i;
+void *tmp_addr;
+if (cached_block_num == MAX_CACHED_BLOCKS) {
+    // If the cache is full, evict one page
+    while (true) {
+        tmp_addr = cached_block[cached_block_next];
+        assert(va_is_mapped(tmp_addr));
+        // If it is dirty, flush (because the following step will clear the dirty bit)
+        if (va_is_dirty(tmp_addr)) {
+            flush_block(tmp_addr);
+        }
+        if (va_is_accessed(tmp_addr)) {
+            // Clear the access bit (and the dirty bit)
+            if ((r = sys_page_map(0, tmp_addr, 0, tmp_addr, uvpt[PGNUM(tmp_addr)] & PTE_SYSCALL)) < 0)
+                panic("in bc_pgfault, sys_page_map: %e", r);
+        } else {
+            // Evict this page
+            cprintf("evict %u\n", (uint32_t) tmp_addr);
+            if ((r = sys_page_unmap(0, tmp_addr)) < 0)
+                panic("in bc_pgfault, sys_page_unmap: %e", r);
+            cached_block[cached_block_next] = NULL;
+            --cached_block_num;
+            break;
+        }
+        cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS;
+    }
+    i = cached_block_next;
+    cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS;
+} else {
+    // Otherwise, find a slot in cached_block array
+    i = (cached_block_next - 1 + MAX_CACHED_BLOCKS) % MAX_CACHED_BLOCKS;
+    while ((i != MAX_CACHED_BLOCKS) && cached_block[i]) {
+        i = (i - 1 + MAX_CACHED_BLOCKS) % MAX_CACHED_BLOCKS;
+    }
+    assert(!cached_block[i]);
+}
+cached_block[i] = addr;
+++cached_block_num;
+```
+
+
+
 **Exercise 3.** *Use `free_block` as a model to implement `alloc_block` in `fs/fs.c`, which should find a free disk block in the bitmap, mark it used, and return the number of that block. When you allocate a block, you should immediately flush the changed bitmap block to disk with `flush_block`, to help file system consistency.*
 
 In `alloc_block()` of `fs.c`, I added:
@@ -293,7 +358,97 @@ if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
 
 *Run make run-testshell to test your shell.*
 
+In `runcmd()` of `sh.c`, I added:
 
+```c
+if ((fd = open(t, O_RDONLY)) < 0) {
+    cprintf("open %s for read: %e", t, fd);
+    exit();
+}
+if (fd != 0) {
+    dup(fd, 0);
+    close(fd);
+}
+```
+
+I run `make qemu-nox`, and type `sh < script` into the console. The output is:
+
+```
+$ sh < script
+This is from the script.
+    1 Lorem ipsum dolor sit amet, consectetur
+    2 adipisicing elit, sed do eiusmod tempor
+    3 incididunt ut labore et dolore magna
+    4 aliqua. Ut enim ad minim veniam, quis
+    5 nostrud exercitation ullamco laboris
+    6 nisi ut aliquip ex ea commodo consequat.
+    7 Duis aute irure dolor in reprehenderit
+    8 in voluptate velit esse cillum dolore eu
+    9 fugiat nulla pariatur. Excepteur sint
+   10 occaecat cupidatat non proident, sunt in
+   11 culpa qui officia deserunt mollit anim
+   12 id est laborum.
+These are my file descriptors.
+fd 0: name script isdir 0 size 132 dev file
+fd 1: name <cons> isdir 0 size 0 dev cons
+This is the end of the script.
+$ 
+```
+
+I run `make run-testshell-nox`, and the output is:
+
+```
+vagrant@ubuntu-xenial:~/jos$ make run-testshell-nox
+make[1]: Entering directory '/home/vagrant/jos'
+make[1]: 'obj/fs/fs.img' is up to date.
+make[1]: Leaving directory '/home/vagrant/jos'
+qemu-system-i386 -nographic -drive file=obj/kern/kernel.img,index=0,media=disk,format=raw -serial mon:stdio -gdb tcp::26000 -D qemu.log -smp 1 -drive file=obj/fs/fs.img,index=1,media=disk,format=raw
+6828 decimal is 15254 octal!
+Physical memory: 131072K available, base = 640K, extended = 130432K
+check_page_free_list() succeeded!
+check_page_alloc() succeeded!
+check_page() succeeded!
+check_kern_pgdir() succeeded!
+check_page_free_list() succeeded!
+check_page_installed_pgdir() succeeded!
+SMP: CPU 0 found 1 CPU(s)
+enabled interrupts: 1 2 4
+FS is running
+FS can do I/O
+Device 1 presence: 1
+block cache is good
+superblock is good
+bitmap is good
+alloc_block is good
+file_open is good
+file_get_block is good
+file_flush is good
+file_truncate is good
+file rewrite is good
+running sh -x < testshell.sh | cat
+shell ran correctly
+Welcome to the JOS kernel monitor!
+Type 'help' for a list of commands.
+TRAP frame at 0xf029707c from CPU 0
+  edi  0x00000b64
+  esi  0x00000b65
+  ebp  0xeebfdfd0
+  oesp 0xefffffdc
+  ebx  0x00000000
+  edx  0xeebfde58
+  ecx  0x00000014
+  eax  0x00000014
+  es   0x----0023
+  ds   0x----0023
+  trap 0x00000003 Breakpoint
+  err  0x00000000
+  eip  0x008002f6
+  cs   0x----001b
+  flag 0x00000292
+  esp  0xeebfdf88
+  ss   0x----0023
+K>
+```
 
 **Grading.** This is the output of `make grade`:
 

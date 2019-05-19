@@ -1,6 +1,19 @@
 
 #include "fs.h"
 
+// Challenge 2:
+#define MAX_CACHED_BLOCKS 256 // Maximum cached blocks.
+static uint32_t cached_block_num = 0; // The number of cached blocks.
+static void *cached_block[MAX_CACHED_BLOCKS] = {NULL}; // The vaddr of cached blocks.
+static uint32_t cached_block_next = 0; // The next block to evict.
+
+// Return whether the accessed bit is true or not.
+bool
+va_is_accessed(void *va)
+{
+	return (uvpt[PGNUM(va)] & PTE_A) != 0;
+}
+
 // Return the virtual address of this disk block.
 void*
 diskaddr(uint32_t blockno)
@@ -49,6 +62,47 @@ bc_pgfault(struct UTrapframe *utf)
 	//
 	// LAB 5: you code here:
 	addr = ROUNDDOWN(addr, PGSIZE);
+
+	// Challenge 2:
+	int i;
+	void *tmp_addr;
+	if (cached_block_num == MAX_CACHED_BLOCKS) {
+		// If the cache is full, evict one page
+		while (true) {
+			tmp_addr = cached_block[cached_block_next];
+			assert(va_is_mapped(tmp_addr));
+			// If it is dirty, flush (because the following step will clear the dirty bit)
+			if (va_is_dirty(tmp_addr)) {
+				flush_block(tmp_addr);
+			}
+			if (va_is_accessed(tmp_addr)) {
+				// Clear the access bit (and the dirty bit)
+				if ((r = sys_page_map(0, tmp_addr, 0, tmp_addr, uvpt[PGNUM(tmp_addr)] & PTE_SYSCALL)) < 0)
+					panic("in bc_pgfault, sys_page_map: %e", r);
+			} else {
+				// Evict this page
+				cprintf("evict %u\n", (uint32_t) tmp_addr);
+				if ((r = sys_page_unmap(0, tmp_addr)) < 0)
+					panic("in bc_pgfault, sys_page_unmap: %e", r);
+				cached_block[cached_block_next] = NULL;
+				--cached_block_num;
+				break;
+			}
+			cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS;
+		}
+		i = cached_block_next;
+		cached_block_next = (cached_block_next + 1) % MAX_CACHED_BLOCKS;
+	} else {
+		// Otherwise, find a slot in cached_block array
+		i = (cached_block_next - 1 + MAX_CACHED_BLOCKS) % MAX_CACHED_BLOCKS;
+		while ((i != MAX_CACHED_BLOCKS) && cached_block[i]) {
+			i = (i - 1 + MAX_CACHED_BLOCKS) % MAX_CACHED_BLOCKS;
+		}
+		assert(!cached_block[i]);
+	}
+	cached_block[i] = addr;
+	++cached_block_num;
+
 	if ((r = sys_page_alloc(0, addr, PTE_U | PTE_W)) < 0) {
 		panic("in bc_pgfault, sys_page_alloc: %e", r);
 	}
