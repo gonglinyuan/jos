@@ -30,7 +30,34 @@ No. Because `IOPL` is in `EFLAGS`, which will be properly saved and restored eve
 
 *The `flush_block` function should write a block out to disk if necessary. `flush_block` shouldn't do anything if the block isn't even in the block cache (that is, the page isn't mapped) or if it's not dirty. After writing the block to disk, `flush_block` should clear the `PTE_D` bit using `sys_page_map`.*
 
+In `bc_pgfault()` of `bc.c`, I added:
 
+```c
+addr = ROUNDDOWN(addr, PGSIZE);
+if ((r = sys_page_alloc(0, addr, PTE_U | PTE_W)) < 0) {
+	panic("in bc_pgfault, sys_page_alloc: %e", r);
+}
+if ((r = ide_read(blockno * BLKSECTS, addr, BLKSECTS)) < 0) {
+	panic("in bc_pgfault, ide_read returns %d", r);
+}
+```
+
+In `flush_block()` of `bc.c`, I added:
+
+```c
+int r;
+addr = ROUNDDOWN(addr, BLKSIZE);
+if (!(va_is_mapped(addr) && va_is_dirty(addr))) {
+    return;
+}
+if ((r = ide_write(blockno * BLKSECTS, addr, BLKSECTS)) < 0) {
+    panic("in bc_pgfault, ide_write returns %d", r);
+}
+// Remap to clear PTE_D
+if ((r = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL)) < 0) {
+    panic("in bc_pgfault, sys_page_map: %e", r);
+}
+```
 
 **Grading.** This is the output of `make grade`:
 
