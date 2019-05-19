@@ -59,6 +59,30 @@ if ((r = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL)) < 0) {
 }
 ```
 
+**Exercise 3.** *Use `free_block` as a model to implement `alloc_block` in `fs/fs.c`, which should find a free disk block in the bitmap, mark it used, and return the number of that block. When you allocate a block, you should immediately flush the changed bitmap block to disk with `flush_block`, to help file system consistency.*
+
+In `alloc_block()` of `fs.c`, I added:
+
+```c
+uint32_t blockno = 0;
+while ((blockno < super->s_nblocks) && !bitmap[blockno / 32]) {
+    blockno += 32;
+}
+while ((blockno < super->s_nblocks) && !(bitmap[blockno / 32] & (1 << (blockno % 32)))) {
+    blockno += 1;
+}
+if (blockno >= super->s_nblocks) {
+    return -E_NO_DISK;
+}
+bitmap[blockno / 32] &= ~(1 << (blockno % 32));
+flush_block(&bitmap[blockno / 32]);
+return blockno;
+```
+
+**Exercise 4.** *Implement `file_block_walk` and `file_get_block`. `file_block_walk` maps from a block offset within a file to the pointer for that block in the `struct File` or the indirect block, very much like what `pgdir_walk` did for page tables. `file_get_block` goes one step further and maps to the actual disk block, allocating a new one if necessary.*
+
+
+
 **Grading.** This is the output of `make grade`:
 
 ```
