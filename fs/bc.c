@@ -81,7 +81,7 @@ bc_pgfault(struct UTrapframe *utf)
 					panic("in bc_pgfault, sys_page_map: %e", r);
 			} else {
 				// Evict this page
-				cprintf("evict %u\n", (uint32_t) tmp_addr);
+				cprintf("evict %x\n", (uint32_t) tmp_addr);
 				if ((r = sys_page_unmap(0, tmp_addr)) < 0)
 					panic("in bc_pgfault, sys_page_unmap: %e", r);
 				cached_block[cached_block_next] = NULL;
