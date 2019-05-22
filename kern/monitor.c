@@ -257,9 +257,8 @@ int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
 
 int mon_showtime(int argc, char **argv, struct Trapframe *tf) {
 	cprintf("hello\n");
-	cprintf("%d\n", mc146818_read(MC_NVRAM_START + 34));
-	cprintf("%d\n", mc146818_read(MC_NVRAM_START + 35));
-	cprintf("%d\n", mc146818_read(MC_NVRAM_START + 36));
-	cprintf("%d\n", mc146818_read(MC_NVRAM_START + 37));
+	for (int i = 11; i < 38; ++i) {
+		cprintf("%d %d\n", i, mc146818_read(MC_NVRAM_START + i));
+	}
 	return 0;
 }
