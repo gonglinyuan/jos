@@ -263,6 +263,16 @@ nvram_read(int r)
 
 int mon_showtime(int argc, char **argv, struct Trapframe *tf) {
 	cprintf("hello\n");
-	cprintf("%d %d %d %d %d %d\n", mc146818_read(9), mc146818_read(8), mc146818_read(7), mc146818_read(4), mc146818_read(2), mc146818_read(0)); 
+	int year = mc146818_read(9);
+	int month = mc146818_read(8);
+	int day = mc146818_read(7);
+	int hour = mc146818_read(4);
+	int min = mc146818_read(2);
+	int sec = mc146818_read(0);
+	if (0 >= (int) (month -= 2)) {
+		month += 12;	/* Puts Feb last since it has leap day */
+		year -= 1;
+	}
+	cprintf("%d %d %d %d %d %d\n", year, month, day, hour, min, sec);
 	return 0;
 }
