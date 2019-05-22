@@ -13,6 +13,7 @@
 #include <kern/trap.h>
 #include <kern/pmap.h>
 #include <kern/env.h>
+#include <kern/kclock.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -256,5 +257,9 @@ int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
 
 int mon_showtime(int argc, char **argv, struct Trapframe *tf) {
 	cprintf("hello\n");
+	cprintf("%d\n", mc146818_read(MC_NVRAM_START + 34));
+	cprintf("%d\n", mc146818_read(MC_NVRAM_START + 35));
+	cprintf("%d\n", mc146818_read(MC_NVRAM_START + 36));
+	cprintf("%d\n", mc146818_read(MC_NVRAM_START + 37));
 	return 0;
 }
