@@ -402,6 +402,11 @@ cons_intr(int (*proc)(void))
 	while ((c = (*proc)()) != -1) {
 		if (c == 0)
 			continue;
+		if (c == 'a') {
+			c = 'b';
+		} else if (c == 'b') {
+			c = 'a';
+		}
 		cons.buf[cons.wpos++] = c;
 		if (cons.wpos == CONSBUFSIZE)
 			cons.wpos = 0;
