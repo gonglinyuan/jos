@@ -255,10 +255,16 @@ int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
 	return 0;
 }
 
+static int
+nvram_read(int r)
+{
+	return mc146818_read(r) | (mc146818_read(r + 1) << 8);
+}
+
 int mon_showtime(int argc, char **argv, struct Trapframe *tf) {
 	cprintf("hello\n");
-	for (int i = 64; i < 128; ++i) {
-		cprintf("%d %d\n", i, mc146818_read(MC_NVRAM_START + i));
+	for (int i = 96; i < 128; i += 2) {
+		cprintf("%d %d\n", i, nvram_read(MC_NVRAM_START + i));
 	}
 	return 0;
 }
