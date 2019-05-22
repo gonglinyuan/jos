@@ -261,14 +261,16 @@ nvram_read(int r)
 	return mc146818_read(r) | (mc146818_read(r + 1) << 8);
 }
 
+#define const_bcd2bin(x)	(((x) & 0x0f) + ((x) >> 4) * 10)
+
 int mon_showtime(int argc, char **argv, struct Trapframe *tf) {
 	cprintf("hello\n");
-	int year = mc146818_read(9);
-	int month = mc146818_read(8);
-	int day = mc146818_read(7);
-	int hour = mc146818_read(4);
-	int min = mc146818_read(2);
-	int sec = mc146818_read(0);
+	int year = const_bcd2bin(mc146818_read(9));
+	int month = const_bcd2bin(mc146818_read(8));
+	int day = const_bcd2bin(mc146818_read(7));
+	int hour = const_bcd2bin(mc146818_read(4));
+	int min = const_bcd2bin(mc146818_read(2));
+	int sec = const_bcd2bin(mc146818_read(0));
 	cprintf("%d %d %d %d %d %d\n", year, month, day, hour, min, sec);
 	return 0;
 }
