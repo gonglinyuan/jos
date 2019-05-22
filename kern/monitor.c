@@ -269,21 +269,6 @@ int mon_showtime(int argc, char **argv, struct Trapframe *tf) {
 	int hour = mc146818_read(4);
 	int min = mc146818_read(2);
 	int sec = mc146818_read(0);
-	if (0 >= (int) (month -= 2)) {
-		month += 12;	/* Puts Feb last since it has leap day */
-		year -= 1;
-	}
-	if (sec >= 60) {
-		sec -= 60;
-		min += 1;
-	}
-	if (min >= 60) {
-		min -= 60;
-		hour += 1;
-	}
-	if (day >= 30) {
-		day -= 30;
-	}
 	cprintf("%d %d %d %d %d %d\n", year, month, day, hour, min, sec);
 	return 0;
 }
