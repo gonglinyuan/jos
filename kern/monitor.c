@@ -263,6 +263,6 @@ nvram_read(int r)
 
 int mon_showtime(int argc, char **argv, struct Trapframe *tf) {
 	cprintf("hello\n");
-	cprintf("%d %d %d\n", mc146818_read(4), mc146818_read(2), mc146818_read(0)); 
+	cprintf("%d %d %d %d %d %d\n", mc146818_read(9), mc146818_read(8), mc146818_read(7), mc146818_read(4), mc146818_read(2), mc146818_read(0)); 
 	return 0;
 }
