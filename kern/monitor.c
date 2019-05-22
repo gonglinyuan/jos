@@ -31,7 +31,8 @@ static struct Command commands[] = {
 	{ "setmapping", "Set the bits on the PTE", mon_setmapping },
 	{ "dumpmemory", "Display a range of physical or virtual memory", mon_dumpmemory },
 	{ "continue", "Continue running", mon_continue },
-	{ "stepi", "step to the next instruction", mon_stepi }
+	{ "stepi", "step to the next instruction", mon_stepi },
+	{ "showtime", "", mon_showtime }
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -250,5 +251,10 @@ int mon_stepi(int argc, char **argv, struct Trapframe *tf) {
 	assert(tf && (tf->tf_trapno == T_BRKPT || tf->tf_trapno == T_DEBUG));
 	tf->tf_eflags |= 0x100;  // set the trap flag
 	env_run(curenv);
+	return 0;
+}
+
+int mon_showtime(int argc, char **argv, struct Trapframe *tf) {
+	cprintf("hello\n");
 	return 0;
 }

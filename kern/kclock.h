@@ -23,6 +23,8 @@
 #define NVRAM_EXT16LO	(MC_NVRAM_START + 38)	/* low byte; RTC off. 0x34 */
 #define NVRAM_EXT16HI	(MC_NVRAM_START + 39)	/* high byte; RTC off. 0x35 */
 
+#define NVRAM_CENTURY	(MC_NVRAM_START + 36)
+
 unsigned mc146818_read(unsigned reg);
 void mc146818_write(unsigned reg, unsigned datum);
 
