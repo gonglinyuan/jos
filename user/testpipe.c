@@ -61,5 +61,5 @@ umain(int argc, char **argv)
 	wait(pid);
 
 	cprintf("pipe tests passed\n");
-	cprintf("%d\n", pgfault_counter)
+	cprintf("%d\n", pgfault_counter);
 }
