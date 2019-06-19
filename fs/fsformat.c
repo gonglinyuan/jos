@@ -45,6 +45,7 @@ uint32_t nblocks;
 char *diskmap, *diskpos;
 struct Super *super;
 uint32_t *bitmap;
+uint32_t *imap;
 
 void
 panic(const char *fmt, ...)
@@ -117,6 +118,9 @@ opendisk(const char *name)
 	nbitblocks = (nblocks + BLKBITSIZE - 1) / BLKBITSIZE;
 	bitmap = alloc(nbitblocks * BLKSIZE);
 	memset(bitmap, 0xFF, nbitblocks * BLKSIZE);
+
+	imap = alloc((nblocks / INODE_ENT_BLK) * BLKSIZE);
+	memset(imap, 0x00, (nblocks / INODE_ENT_BLK) * BLKSIZE);
 }
 
 void
@@ -171,8 +175,13 @@ finishdir(struct Dir *d)
 {
 	int size = d->n * sizeof(struct File);
 	struct File *start = alloc(size);
+	uint32_t *start2 = alloc(d->n * sizeof(uint32_t));
 	memmove(start, d->ents, size);
-	finishfile(d->f, blockof(start), ROUNDUP(size, BLKSIZE));
+	for (uint32_t i = 0; i < d->n; ++i) {
+		imap[i + 1] = (uint32_t)(start + i) - (uint32_t) diskmap + 0x10000000;
+		start2[i] = i + 1;
+	}
+	finishfile(d->f, blockof(start2), ROUNDUP(d->n * sizeof(uint32_t), BLKSIZE));
 	free(d->ents);
 	d->ents = NULL;
 }

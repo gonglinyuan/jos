@@ -88,13 +88,49 @@ check_bitmap(void)
 
 	// Make sure all bitmap blocks are marked in-use
 	for (i = 0; i * BLKBITSIZE < super->s_nblocks; i++)
-		assert(!block_is_free(2+i));
+		assert(!block_is_free(3+i));
 
 	// Make sure the reserved and root blocks are marked in-use.
 	assert(!block_is_free(0));
 	assert(!block_is_free(1));
+	assert(!block_is_free(2));
 
 	cprintf("bitmap is good\n");
+}
+
+// --------------------------------------------------------------
+// Inode map
+// --------------------------------------------------------------
+
+void
+free_inode(uint32_t inode_num)
+{
+	assert(inode_num > 0 && inode_num < super->s_nblocks);
+	// update imap
+	imap[inode_num] = 0;
+	flush_block(&imap[inode_num]);
+}
+
+int
+alloc_inode(void)
+{
+	int r;
+	// allocate block and store inode
+	if ((r = alloc_block()) < 0) {
+		return r;
+	}
+	struct File *addr = diskaddr(r);
+	// allocate inode number and update imap
+	uint32_t inode_num = 1;
+	while ((inode_num < super->s_nblocks) && imap[inode_num]) {
+		++inode_num;
+	}
+	if (inode_num >= super->s_nblocks) {
+		return -E_NO_DISK;
+	}
+	imap[inode_num] = (uint32_t) addr;
+	flush_block(&imap[inode_num]);
+	return inode_num;
 }
 
 // --------------------------------------------------------------
@@ -124,6 +160,8 @@ fs_init(void)
 	bitmap = diskaddr(2);
 	check_bitmap();
 	
+	// Set "imap" to the inode map
+	imap = diskaddr(3);
 }
 
 // Find the disk block number slot for the 'filebno'th block in file 'f'.
@@ -204,7 +242,7 @@ dir_lookup(struct File *dir, const char *name, struct File **file)
 	int r;
 	uint32_t i, j, nblock;
 	char *blk;
-	struct File *f;
+	uint32_t *f;
 
 	// Search dir for name.
 	// We maintain the invariant that the size of a directory-file
@@ -214,12 +252,16 @@ dir_lookup(struct File *dir, const char *name, struct File **file)
 	for (i = 0; i < nblock; i++) {
 		if ((r = file_get_block(dir, i, &blk)) < 0)
 			return r;
-		f = (struct File*) blk;
-		for (j = 0; j < BLKFILES; j++)
-			if (strcmp(f[j].f_name, name) == 0) {
-				*file = &f[j];
-				return 0;
+		f = (uint32_t*) blk;
+		for (j = 0; j < INODE_ENT_BLK; ++j) {
+			if (f[j]) {
+				struct File *pf = (struct File*) imap[f[j]];
+				if (strcmp(pf->f_name, name) == 0) {
+					*file = pf;
+					return 0;
+				}
 			}
+		}
 	}
 	return -E_NOT_FOUND;
 }
@@ -232,25 +274,31 @@ dir_alloc_file(struct File *dir, struct File **file)
 	int r;
 	uint32_t nblock, i, j;
 	char *blk;
-	struct File *f;
+	uint32_t *f;
+	struct File *pf;
 
 	assert((dir->f_size % BLKSIZE) == 0);
 	nblock = dir->f_size / BLKSIZE;
 	for (i = 0; i < nblock; i++) {
 		if ((r = file_get_block(dir, i, &blk)) < 0)
 			return r;
-		f = (struct File*) blk;
-		for (j = 0; j < BLKFILES; j++)
-			if (f[j].f_name[0] == '\0') {
-				*file = &f[j];
-				return 0;
+		f = (uint32_t*) blk;
+		for (j = 0; j < INODE_ENT_BLK; ++j) {
+			if (f[j]) {
+				pf = (struct File*) imap[f[j]];
+				if (pf->f_name[0] == '\0') {
+					*file = pf;
+					return 0;
+				}
 			}
+		}
 	}
 	dir->f_size += BLKSIZE;
 	if ((r = file_get_block(dir, i, &blk)) < 0)
 		return r;
-	f = (struct File*) blk;
-	*file = &f[0];
+	f = (uint32_t*) blk;
+	f[0] = alloc_inode();
+	*file = (struct File*) imap[f[0]];
 	return 0;
 }
 
