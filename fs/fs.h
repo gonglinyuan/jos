@@ -14,6 +14,11 @@
 struct Super *super;		// superblock
 uint32_t *imap;		// inode map mapped in memory
 
+uint32_t lfs_tmp_imap[INODE_ENT_BLK];
+
+void lfs_sync_from_disk(void);
+void lfs_sync_to_disk(void);
+
 /* ide.c */
 bool	ide_probe_disk1(void);
 void	ide_set_disk(int diskno);

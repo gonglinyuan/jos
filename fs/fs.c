@@ -86,8 +86,7 @@ free_inode(uint32_t inode_num)
 {
 	assert(inode_num > 0 && inode_num < super->s_nblocks);
 	// update imap
-	imap[inode_num] = 0;
-	flush_block(&imap[inode_num]);
+	lfs_tmp_imap[inode_num] = 0;
 }
 
 int
@@ -101,14 +100,13 @@ alloc_inode(void)
 	struct File *addr = diskaddr(r);
 	// allocate inode number and update imap
 	uint32_t inode_num = 1;
-	while ((inode_num < super->s_nblocks) && imap[inode_num]) {
+	while ((inode_num < super->s_nblocks) && lfs_tmp_imap[inode_num]) {
 		++inode_num;
 	}
 	if (inode_num >= super->s_nblocks) {
 		return -E_NO_DISK;
 	}
-	imap[inode_num] = (uint32_t) addr;
-	flush_block(&imap[inode_num]);
+	lfs_tmp_imap[inode_num] = (uint32_t) addr;
 	return inode_num;
 }
 
@@ -140,6 +138,7 @@ fs_init(void)
 	
 	// Set "imap" to the inode map
 	imap = diskaddr(2);
+	lfs_sync_from_disk();
 }
 
 // Find the disk block number slot for the 'filebno'th block in file 'f'.
@@ -233,7 +232,7 @@ dir_lookup(struct File *dir, const char *name, struct File **file)
 		f = (uint32_t*) blk;
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
 			if (f[j]) {
-				struct File *pf = (struct File*) imap[f[j]];
+				struct File *pf = (struct File*) lfs_tmp_imap[f[j]];
 				if (strcmp(pf->f_name, name) == 0) {
 					*file = pf;
 					return 0;
@@ -263,7 +262,7 @@ dir_alloc_file(struct File *dir, struct File **file)
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
 			if (!f[j]) {
 				f[j] = alloc_inode();
-				*file = (struct File*) imap[f[j]];
+				*file = (struct File*) lfs_tmp_imap[f[j]];
 				return 0;
 			}
 		}
@@ -274,7 +273,7 @@ dir_alloc_file(struct File *dir, struct File **file)
 	memset(blk, 0x00, BLKSIZE);
 	f = (uint32_t*) blk;
 	f[0] = alloc_inode();
-	*file = (struct File*) imap[f[0]];
+	*file = (struct File*) lfs_tmp_imap[f[0]];
 	return 0;
 }
 
@@ -519,3 +518,15 @@ fs_sync(void)
 		flush_block(diskaddr(i));
 }
 
+void
+lfs_sync_from_disk(void)
+{
+	memmove(lfs_tmp_imap, imap, sizeof(lfs_tmp_imap));
+}
+
+void
+lfs_sync_to_disk(void)
+{
+	memmove(imap, lfs_tmp_imap, sizeof(lfs_tmp_imap));
+	flush_block(imap);
+}

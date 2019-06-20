@@ -384,7 +384,7 @@ class Runner():
         should be a list of additional arguments to pass to make.  The
         timeout argument bounds how long to run before returning."""
 
-        def run_qemu_kw(target_base="qemu", make_args=[], timeout=30):
+        def run_qemu_kw(target_base="qemu", make_args=[], timeout=60):
             return target_base, make_args, timeout
         target_base, make_args, timeout = run_qemu_kw(**kw)
 
@@ -397,7 +397,7 @@ class Runner():
             # Wait for QEMU to start or make to fail.  This will set
             # self.gdb if QEMU starts.
             self.qemu.on_output = [self.__monitor_start]
-            self.__react([self.qemu], timeout=30)
+            self.__react([self.qemu], timeout=60)
             self.qemu.on_output = []
             if self.gdb is None:
                 print("Failed to connect to QEMU; output:")
@@ -434,7 +434,7 @@ Failed to shutdown QEMU.  You might need to 'killall qemu' or
     def __monitor_start(self, output):
         if b"\n" in output:
             try:
-                self.gdb = GDBClient(self.qemu.get_gdb_port(), timeout=30)
+                self.gdb = GDBClient(self.qemu.get_gdb_port(), timeout=60)
                 raise TerminateTest
             except socket.error:
                 pass

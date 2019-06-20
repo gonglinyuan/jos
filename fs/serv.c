@@ -341,6 +341,7 @@ serve(void)
 		}
 		ipc_send(whom, r, pg, perm);
 		sys_page_unmap(0, fsreq);
+		lfs_sync_to_disk();
 	}
 }
 

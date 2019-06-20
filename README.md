@@ -277,6 +277,136 @@ if ((r = msync(diskmap, nblocks * BLKSIZE, MS_SYNC)) < 0)
     panic("msync: %s", strerror(errno));
 ```
 
+**Imap Buffering.**
+
+In LFS, we will implement an in-memory buffer for file updates. This buffer keeps track of all the updates to the file system. After the buffer is full or after some time interval, the updates in the buffer is written to the hard disk. In this state, we implement the simplest part of the buffer: the Inode map buffering.
+
+I defined some data structures in `fs/fs.h`:
+
+```c
+uint32_t lfs_tmp_imap[INODE_ENT_BLK];
+```
+
+In `fs/fs.c`, I changed all updates to `imap` into updates to `lsf_tmp_imap`:
+
+```c
+void
+free_inode(uint32_t inode_num)
+{
+	assert(inode_num > 0 && inode_num < super->s_nblocks);
+	// update imap
+	lfs_tmp_imap[inode_num] = 0;
+}
+```
+
+```c
+int
+alloc_inode(void)
+{
+	int r;
+	// allocate block and store inode
+	if ((r = alloc_block()) < 0) {
+		return r;
+	}
+	struct File *addr = diskaddr(r);
+	// allocate inode number and update imap
+	uint32_t inode_num = 1;
+	while ((inode_num < super->s_nblocks) && lfs_tmp_imap[inode_num]) {
+		++inode_num;
+	}
+	if (inode_num >= super->s_nblocks) {
+		return -E_NO_DISK;
+	}
+	lfs_tmp_imap[inode_num] = (uint32_t) addr;
+	return inode_num;
+}
+```
+
+```c
+static int
+dir_lookup(struct File *dir, const char *name, struct File **file)
+{
+	int r;
+	uint32_t i, j, nblock;
+	char *blk;
+	uint32_t *f;
+
+	// Search dir for name.
+	// We maintain the invariant that the size of a directory-file
+	// is always a multiple of the file system's block size.
+	assert((dir->f_size % BLKSIZE) == 0);
+	nblock = dir->f_size / BLKSIZE;
+	for (i = 0; i < nblock; i++) {
+		if ((r = file_get_block(dir, i, &blk)) < 0)
+			return r;
+		f = (uint32_t*) blk;
+		for (j = 0; j < INODE_ENT_BLK; ++j) {
+			if (f[j]) {
+				struct File *pf = (struct File*) lfs_tmp_imap[f[j]];
+				if (strcmp(pf->f_name, name) == 0) {
+					*file = pf;
+					return 0;
+				}
+			}
+		}
+	}
+	return -E_NOT_FOUND;
+}
+```
+
+```c
+static int
+dir_alloc_file(struct File *dir, struct File **file)
+{
+	int r;
+	uint32_t nblock, i, j;
+	char *blk;
+	uint32_t *f;
+
+	assert((dir->f_size % BLKSIZE) == 0);
+	nblock = dir->f_size / BLKSIZE;
+	for (i = 0; i < nblock; i++) {
+		if ((r = file_get_block(dir, i, &blk)) < 0)
+			return r;
+		f = (uint32_t*) blk;
+		for (j = 0; j < INODE_ENT_BLK; ++j) {
+			if (!f[j]) {
+				f[j] = alloc_inode();
+				*file = (struct File*) lfs_tmp_imap[f[j]];
+				return 0;
+			}
+		}
+	}
+	dir->f_size += BLKSIZE;
+	if ((r = file_get_block(dir, i, &blk)) < 0)
+		return r;
+	memset(blk, 0x00, BLKSIZE);
+	f = (uint32_t*) blk;
+	f[0] = alloc_inode();
+	*file = (struct File*) lfs_tmp_imap[f[0]];
+	return 0;
+}
+```
+
+Then, in `fs/fs.c`, I defined two functions `lfs_sync_from_disk()` and `lfs_sync_to_disk()` to synchronize the imap buffer with the disk:
+
+```c
+void
+lfs_sync_from_disk(void)
+{
+	memmove(lfs_tmp_imap, imap, sizeof(lfs_tmp_imap));
+}
+
+void
+lfs_sync_to_disk(void)
+{
+	memmove(imap, lfs_tmp_imap, sizeof(lfs_tmp_imap));
+	flush_block(imap);
+}
+```
+
+I added a call to `lfs_sync_from_disk()` at the end of `fs_init()` in `fs/fs.c`; I also added a call to `lfs_sync_to_disk()`  at the end of the main loop of `serve()` in `fs/serv.c`.
+
 **File Updates Buffering.**
 
 In this stage, we implement an in-memory buffer for file updates. This buffer keeps track of all the updates to the file system. After the buffer is full or after some time interval, the updates in the buffer is written to the hard disk. In the current stage, the performance of our file system cannot benefit from this buffering mechanic because the file updates are still multiple random writes to the disk. However, after we implement *persistent file updates* in the next stage, our FS will benefit a lot from the buffering. 
