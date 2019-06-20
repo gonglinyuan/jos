@@ -13,18 +13,14 @@ fs_test(void)
 	char *blk;
 	uint32_t *bits;
 
-	// back up bitmap
-	if ((r = sys_page_alloc(0, (void*) PGSIZE, PTE_P|PTE_U|PTE_W)) < 0)
-		panic("sys_page_alloc: %e", r);
-	bits = (uint32_t*) PGSIZE;
-	memmove(bits, bitmap, PGSIZE);
+	uint32_t last_cur_blk = super->s_cur_blk;
 	// allocate block
 	if ((r = alloc_block()) < 0)
 		panic("alloc_block: %e", r);
 	// check that block was free
-	assert(bits[r/32] & (1 << (r%32)));
+	assert(r >= last_cur_blk);
 	// and is not free any more
-	assert(!(bitmap[r/32] & (1 << (r%32))));
+	assert(r < super->s_cur_blk);
 	cprintf("alloc_block is good\n");
 
 	if ((r = file_open("/not-found", &f)) < 0 && r != -E_NOT_FOUND)

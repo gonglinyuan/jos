@@ -19,8 +19,8 @@ matchtest(test_fs, "check_bc",
           "block cache is good")
 matchtest(test_fs, "check_super",
           "superblock is good")
-matchtest(test_fs, "check_bitmap",
-          "bitmap is good")
+matchtest(test_fs, "check_cur_blk",
+          "current block pointer is good")
 matchtest(test_fs, "alloc_block",
           "alloc_block is good")
 matchtest(test_fs, "file_open",

@@ -31,9 +31,7 @@ block_is_free(uint32_t blockno)
 {
 	if (super == 0 || blockno >= super->s_nblocks)
 		return 0;
-	if (bitmap[blockno / 32] & (1 << (blockno % 32)))
-		return 1;
-	return 0;
+	return (blockno >= super->s_cur_blk);
 }
 
 // Mark a block free in the bitmap
@@ -43,7 +41,6 @@ free_block(uint32_t blockno)
 	// Blockno zero is the null pointer of block numbers.
 	if (blockno == 0)
 		panic("attempt to free zero block");
-	bitmap[blockno/32] |= 1<<(blockno%32);
 }
 
 // Search the bitmap for a free block and allocate it.  When you
@@ -57,24 +54,7 @@ free_block(uint32_t blockno)
 int
 alloc_block(void)
 {
-	// The bitmap consists of one or more blocks.  A single bitmap block
-	// contains the in-use bits for BLKBITSIZE blocks.  There are
-	// super->s_nblocks blocks in the disk altogether.
-
-	// LAB 5: Your code here.
-	uint32_t blockno = 0;
-	while ((blockno < super->s_nblocks) && !bitmap[blockno / 32]) {
-		blockno += 32;
-	}
-	while ((blockno < super->s_nblocks) && !(bitmap[blockno / 32] & (1 << (blockno % 32)))) {
-		blockno += 1;
-	}
-	if (blockno >= super->s_nblocks) {
-		return -E_NO_DISK;
-	}
-	bitmap[blockno / 32] &= ~(1 << (blockno % 32));
-	flush_block(&bitmap[blockno / 32]);
-	return blockno;
+	return super->s_cur_blk++;
 }
 
 // Validate the file system bitmap.
@@ -82,20 +62,19 @@ alloc_block(void)
 // Check that all reserved blocks -- 0, 1, and the bitmap blocks themselves --
 // are all marked as in-use.
 void
-check_bitmap(void)
+check_cur_blk(void)
 {
 	uint32_t i;
 
 	// Make sure all bitmap blocks are marked in-use
 	for (i = 0; i * BLKBITSIZE < super->s_nblocks; i++)
-		assert(!block_is_free(3+i));
+		assert(!block_is_free(2+i));
 
 	// Make sure the reserved and root blocks are marked in-use.
 	assert(!block_is_free(0));
 	assert(!block_is_free(1));
-	assert(!block_is_free(2));
 
-	cprintf("bitmap is good\n");
+	cprintf("current block pointer is good\n");
 }
 
 // --------------------------------------------------------------
@@ -157,11 +136,10 @@ fs_init(void)
 	check_super();
 
 	// Set "bitmap" to the beginning of the first bitmap block.
-	bitmap = diskaddr(2);
-	check_bitmap();
+	check_cur_blk();
 	
 	// Set "imap" to the inode map
-	imap = diskaddr(3);
+	imap = diskaddr(2);
 }
 
 // Find the disk block number slot for the 'filebno'th block in file 'f'.

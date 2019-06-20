@@ -44,7 +44,6 @@ struct Dir
 uint32_t nblocks;
 char *diskmap, *diskpos;
 struct Super *super;
-uint32_t *bitmap;
 uint32_t *imap;
 
 void
@@ -92,7 +91,7 @@ alloc(uint32_t bytes)
 void
 opendisk(const char *name)
 {
-	int r, diskfd, nbitblocks;
+	int r, diskfd;
 
 	if ((diskfd = open(name, O_RDWR | O_CREAT, 0666)) < 0)
 		panic("open %s: %s", name, strerror(errno));
@@ -115,10 +114,6 @@ opendisk(const char *name)
 	super->s_root.f_type = FTYPE_DIR;
 	strcpy(super->s_root.f_name, "/");
 
-	nbitblocks = (nblocks + BLKBITSIZE - 1) / BLKBITSIZE;
-	bitmap = alloc(nbitblocks * BLKSIZE);
-	memset(bitmap, 0xFF, nbitblocks * BLKSIZE);
-
 	imap = alloc((nblocks / INODE_ENT_BLK) * BLKSIZE);
 	memset(imap, 0x00, (nblocks / INODE_ENT_BLK) * BLKSIZE);
 }
@@ -126,10 +121,9 @@ opendisk(const char *name)
 void
 finishdisk(void)
 {
-	int r, i;
+	int r;
 
-	for (i = 0; i < blockof(diskpos); ++i)
-		bitmap[i/32] &= ~(1<<(i%32));
+	super->s_cur_blk = blockof(diskpos);
 
 	if ((r = msync(diskmap, nblocks * BLKSIZE, MS_SYNC)) < 0)
 		panic("msync: %s", strerror(errno));

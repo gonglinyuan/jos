@@ -170,11 +170,116 @@ int size = d->n * sizeof(struct File);
    ```
    
 
+**Remove Bitmap Structure.**
+
+The JOS file system uses a free block *bitmap* to record which disk block is in use and which disk block is free.  When the file system needs a new block, it will look up the bitmap to find an empty slot. However, LFS appends everything right after the used part of the disk, so we do not need the free block bitmap any longer: what we need is just a pointer to mark the start of the unused part of the disk.
+
+In `inc/fs.h`, I added a pointer to the `Super` struct:
+
+```c
+struct Super {
+	uint32_t s_magic;		// Magic number: FS_MAGIC
+	uint32_t s_nblocks;		// Total number of blocks on disk
+	struct File s_root;		// Root directory node
+	uint32_t s_cur_blk;		// (LFS) Current disk block 
+};
+```
+
+In `fs/fs.h`, I removed the definition of `bitmap` variable.
+
+In `fs/fs.c`, I changed the `block_is_free()` function:
+
+```c
+bool
+block_is_free(uint32_t blockno)
+{
+	if (super == 0 || blockno >= super->s_nblocks)
+		return 0;
+	return (blockno >= super->s_cur_blk);
+}
+```
+
+In `fs/fs.c`, I commented out the content of `free_block()` function because it now does nothing.
+
+I changed `alloc_block()` of `fs/fs.c` to be:
+
+```c
+int
+alloc_block(void)
+{
+	return super->s_cur_blk++;
+}
+```
+
+I changed `fs_init()` of `fs/fs.c` to be:
+
+```c
+static_assert(sizeof(struct File) == 256);
+
+// Find a JOS disk.  Use the second IDE disk (number 1) if available
+if (ide_probe_disk1())
+    ide_set_disk(1);
+else
+    ide_set_disk(0);
+bc_init();
+
+// Set "super" to point to the super block.
+super = diskaddr(1);
+check_super();
+
+// Set "bitmap" to the beginning of the first bitmap block.
+check_cur_blk();
+
+// Set "imap" to the inode map
+imap = diskaddr(2);
+```
+
+In `fs/fsformat.c`, I removed the definition of `bitmap` variable.
+
+I changed `opendisk()` of `fs/fsformat.c` to be:
+
+```c
+int r, diskfd;
+
+if ((diskfd = open(name, O_RDWR | O_CREAT, 0666)) < 0)
+    panic("open %s: %s", name, strerror(errno));
+
+if ((r = ftruncate(diskfd, 0)) < 0
+    || (r = ftruncate(diskfd, nblocks * BLKSIZE)) < 0)
+    panic("truncate %s: %s", name, strerror(errno));
+
+if ((diskmap = mmap(NULL, nblocks * BLKSIZE, PROT_READ|PROT_WRITE,
+                    MAP_SHARED, diskfd, 0)) == MAP_FAILED)
+    panic("mmap %s: %s", name, strerror(errno));
+
+close(diskfd);
+
+diskpos = diskmap;
+alloc(BLKSIZE);
+super = alloc(BLKSIZE);
+super->s_magic = FS_MAGIC;
+super->s_nblocks = nblocks;
+super->s_root.f_type = FTYPE_DIR;
+strcpy(super->s_root.f_name, "/");
+
+imap = alloc((nblocks / INODE_ENT_BLK) * BLKSIZE);
+memset(imap, 0x00, (nblocks / INODE_ENT_BLK) * BLKSIZE);
+```
+
+I changed `finishdisk()` of `fs/fsformat.c` to be:
+
+```c
+int r;
+
+super->s_cur_blk = blockof(diskpos);
+
+if ((r = msync(diskmap, nblocks * BLKSIZE, MS_SYNC)) < 0)
+    panic("msync: %s", strerror(errno));
+```
+
 **File Updates Buffering.**
 
 In this stage, we implement an in-memory buffer for file updates. This buffer keeps track of all the updates to the file system. After the buffer is full or after some time interval, the updates in the buffer is written to the hard disk. In the current stage, the performance of our file system cannot benefit from this buffering mechanic because the file updates are still multiple random writes to the disk. However, after we implement *persistent file updates* in the next stage, our FS will benefit a lot from the buffering. 
-
-
 
 **Persistent File Updates.**
 
