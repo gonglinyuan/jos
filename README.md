@@ -128,7 +128,6 @@ I changed the file system in these ways:
    uint32_t nblock, i, j;
    char *blk;
    uint32_t *f;
-   struct File *pf;
    
    assert((dir->f_size % BLKSIZE) == 0);
    nblock = dir->f_size / BLKSIZE;
@@ -137,28 +136,27 @@ I changed the file system in these ways:
            return r;
        f = (uint32_t*) blk;
        for (j = 0; j < INODE_ENT_BLK; ++j) {
-           if (f[j]) {
-               pf = (struct File*) imap[f[j]];
-               if (pf->f_name[0] == '\0') {
-                   *file = pf;
-                   return 0;
-               }
+           if (!f[j]) {
+               f[j] = alloc_inode();
+               *file = (struct File*) imap[f[j]];
+               return 0;
            }
        }
    }
    dir->f_size += BLKSIZE;
    if ((r = file_get_block(dir, i, &blk)) < 0)
        return r;
+   memset(blk, 0x00, BLKSIZE);
    f = (uint32_t*) blk;
    f[0] = alloc_inode();
    *file = (struct File*) imap[f[0]];
    return 0;
    ```
-
+   
    I changed `finishdir()` of `fs/fsformat.c` to be:
 
    ```c
-   int size = d->n * sizeof(struct File);
+int size = d->n * sizeof(struct File);
    struct File *start = alloc(size);
    uint32_t *start2 = alloc(d->n * sizeof(uint32_t));
    memmove(start, d->ents, size);
@@ -170,6 +168,15 @@ I changed the file system in these ways:
    free(d->ents);
    d->ents = NULL;
    ```
-
    
+
+**File Updates Buffering.**
+
+In this stage, we implement an in-memory buffer for file updates. This buffer keeps track of all the updates to the file system. After the buffer is full or after some time interval, the updates in the buffer is written to the hard disk. In the current stage, the performance of our file system cannot benefit from this buffering mechanic because the file updates are still multiple random writes to the disk. However, after we implement *persistent file updates* in the next stage, our FS will benefit a lot from the buffering. 
+
+
+
+**Persistent File Updates.**
+
+Traditional file systems (such as old Unix file system and the file system in the lab 5 of JOS) implement implement in place file modifications: for example, when you change some bytes of a file, the file system modifies the data block and the inode of the file exactly in its original place. In order to keep the file system consistent from accidental crashes, these traditional file systems usually introduce **Journaling**: keep an extra "log" for pending changes to the file system. However, in a LFS, we do not keep a file journal in somewhere else: the file system itself is a "log". Therefore, we do not modify anything in place in a LFS; instead, we *append* the changes to the file system.
 

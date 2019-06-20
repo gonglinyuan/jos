@@ -275,7 +275,6 @@ dir_alloc_file(struct File *dir, struct File **file)
 	uint32_t nblock, i, j;
 	char *blk;
 	uint32_t *f;
-	struct File *pf;
 
 	assert((dir->f_size % BLKSIZE) == 0);
 	nblock = dir->f_size / BLKSIZE;
@@ -284,18 +283,17 @@ dir_alloc_file(struct File *dir, struct File **file)
 			return r;
 		f = (uint32_t*) blk;
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
-			if (f[j]) {
-				pf = (struct File*) imap[f[j]];
-				if (pf->f_name[0] == '\0') {
-					*file = pf;
-					return 0;
-				}
+			if (!f[j]) {
+				f[j] = alloc_inode();
+				*file = (struct File*) imap[f[j]];
+				return 0;
 			}
 		}
 	}
 	dir->f_size += BLKSIZE;
 	if ((r = file_get_block(dir, i, &blk)) < 0)
 		return r;
+	memset(blk, 0x00, BLKSIZE);
 	f = (uint32_t*) blk;
 	f[0] = alloc_inode();
 	*file = (struct File*) imap[f[0]];
