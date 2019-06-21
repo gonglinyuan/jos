@@ -1093,3 +1093,236 @@ if ((uint32_t) addr > DISKMAP) {
 }
 ```
 
+**Conclusion.**
+
+In this extra lab, I implemented a minimal version *log-structured file system*. It has most basic properties of a LFS, such as write buffering and persistence. It make use of the fact that sequential writing to a hard disk is substantially faster than random writing, to improve the performance of the file system. However, there are still many things to accomplish:
+
+1.  In a real LFS, because the disk space to manage is usually very large, the imap cannot fit into one or two blocks like our JOS file system; therefore, imap of a real LFS is scattered across the entire disk rather than stored in a fixed place. If we want to use this LFS in a larger system, we should implement this feature.
+
+2. Our implementation has some performance issues, because we use software to monitor each read and write to the hard disk, instead of using hardware features such as `PTE_D`. A better implementation is possible if we want make our LFS faster.
+
+3. Our implementation of LFS does not have a garbage collection system. Therefore, the disk space utilization is not as high as a standard LFS. However, this implementation also has an advantage in crash-recovery, since it keeps more file histories.
+
+This is a statistic of my effort:
+
+```
+$ git diff --stat 99729321db8c8c368890763cce2b9bd32b90012d extralab
+ README.md      | 1075 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ fs/bc.c        |    2 +-
+ fs/fs.c        |  359 +++++++++++++------
+ fs/fs.h        |   32 +-
+ fs/fsformat.c  |   37 +-
+ fs/serv.c      |   24 +-
+ fs/test.c      |   42 ++-
+ grade-lab5     |    4 +-
+ gradelib.py    |    6 +-
+ inc/fs.h       |    4 +-
+ kern/monitor.c |    3 +-
+ 11 files changed, 1421 insertions(+), 167 deletions(-)
+```
+
+I changed 513 lines of code in total.
+
+**Grading.**
+
+I run the lab 5 grading system for my extra lab. Due to some discrepancies in the file API, I made some minor modifications to the test scripts. The grading result is:
+
+```
+vagrant@ubuntu-xenial:~/jos$ make grade
+make clean
+make[1]: Entering directory '/home/vagrant/jos'
+rm -rf obj .gdbinit jos.in qemu.log
+make[1]: Leaving directory '/home/vagrant/jos'
+./grade-lab5
+make[1]: Entering directory '/home/vagrant/jos'
++ as kern/entry.S
++ cc kern/entrypgdir.c
++ cc kern/init.c
++ cc kern/console.c
++ cc kern/monitor.c
++ cc kern/pmap.c
++ cc kern/env.c
++ cc kern/kclock.c
++ cc kern/picirq.c
++ cc kern/printf.c
++ cc kern/trap.c
++ as kern/trapentry.S
++ cc kern/sched.c
++ cc kern/syscall.c
++ cc kern/kdebug.c
++ cc lib/printfmt.c
++ cc lib/readline.c
++ cc lib/string.c
++ as kern/mpentry.S
++ cc kern/mpconfig.c
++ cc kern/lapic.c
++ cc kern/spinlock.c
++ as[USER] lib/entry.S
++ cc[USER] lib/console.c
++ cc[USER] lib/libmain.c
++ cc[USER] lib/exit.c
++ cc[USER] lib/panic.c
++ cc[USER] lib/printf.c
++ cc[USER] lib/printfmt.c
++ cc[USER] lib/readline.c
++ cc[USER] lib/string.c
++ cc[USER] lib/syscall.c
++ cc[USER] lib/pgfault.c
++ as[USER] lib/pfentry.S
++ cc[USER] lib/fork.c
++ cc[USER] lib/ipc.c
++ cc[USER] lib/args.c
++ cc[USER] lib/fd.c
++ cc[USER] lib/file.c
++ cc[USER] lib/fprintf.c
++ cc[USER] lib/pageref.c
++ cc[USER] lib/spawn.c
++ cc[USER] lib/pipe.c
++ cc[USER] lib/wait.c
++ ar obj/lib/libjos.a
+ar: creating obj/lib/libjos.a
++ cc[USER] user/hello.c
++ ld obj/user/hello
++ cc[USER] user/buggyhello.c
++ ld obj/user/buggyhello
++ cc[USER] user/buggyhello2.c
++ ld obj/user/buggyhello2
++ cc[USER] user/evilhello.c
++ ld obj/user/evilhello
++ cc[USER] user/testbss.c
++ ld obj/user/testbss
++ cc[USER] user/divzero.c
++ ld obj/user/divzero
++ cc[USER] user/breakpoint.c
++ ld obj/user/breakpoint
++ cc[USER] user/softint.c
++ ld obj/user/softint
++ cc[USER] user/badsegment.c
++ ld obj/user/badsegment
++ cc[USER] user/faultread.c
++ ld obj/user/faultread
++ cc[USER] user/faultreadkernel.c
++ ld obj/user/faultreadkernel
++ cc[USER] user/faultwrite.c
++ ld obj/user/faultwrite
++ cc[USER] user/faultwritekernel.c
++ ld obj/user/faultwritekernel
++ cc[USER] user/idle.c
++ ld obj/user/idle
++ cc[USER] user/yield.c
++ ld obj/user/yield
++ cc[USER] user/dumbfork.c
++ ld obj/user/dumbfork
++ cc[USER] user/stresssched.c
++ ld obj/user/stresssched
++ cc[USER] user/faultdie.c
++ ld obj/user/faultdie
++ cc[USER] user/faultregs.c
++ ld obj/user/faultregs
++ cc[USER] user/faultalloc.c
++ ld obj/user/faultalloc
++ cc[USER] user/faultallocbad.c
++ ld obj/user/faultallocbad
++ cc[USER] user/faultnostack.c
++ ld obj/user/faultnostack
++ cc[USER] user/faultbadhandler.c
++ ld obj/user/faultbadhandler
++ cc[USER] user/faultevilhandler.c
++ ld obj/user/faultevilhandler
++ cc[USER] user/forktree.c
++ ld obj/user/forktree
++ cc[USER] user/sendpage.c
++ ld obj/user/sendpage
++ cc[USER] user/spin.c
++ ld obj/user/spin
++ cc[USER] user/fairness.c
++ ld obj/user/fairness
++ cc[USER] user/pingpong.c
++ ld obj/user/pingpong
++ cc[USER] user/pingpongs.c
++ ld obj/user/pingpongs
++ cc[USER] user/primes.c
++ ld obj/user/primes
++ cc[USER] user/faultio.c
++ ld obj/user/faultio
++ cc[USER] user/spawnfaultio.c
++ ld obj/user/spawnfaultio
++ cc[USER] user/testfile.c
++ ld obj/user/testfile
++ cc[USER] user/spawnhello.c
++ ld obj/user/spawnhello
++ cc[USER] user/icode.c
++ ld obj/user/icode
++ cc[USER] fs/ide.c
++ cc[USER] fs/bc.c
++ cc[USER] fs/fs.c
++ cc[USER] fs/serv.c
++ cc[USER] fs/test.c
++ ld obj/fs/fs
++ cc[USER] user/testpteshare.c
++ ld obj/user/testpteshare
++ cc[USER] user/testfdsharing.c
++ ld obj/user/testfdsharing
++ cc[USER] user/testpipe.c
++ ld obj/user/testpipe
++ cc[USER] user/testpiperace.c
++ ld obj/user/testpiperace
++ cc[USER] user/testpiperace2.c
++ ld obj/user/testpiperace2
++ cc[USER] user/primespipe.c
++ ld obj/user/primespipe
++ cc[USER] user/testkbd.c
++ ld obj/user/testkbd
++ cc[USER] user/testshell.c
++ ld obj/user/testshell
++ ld obj/kern/kernel
++ as boot/boot.S
++ cc -Os boot/main.c
++ ld boot/boot
+boot block is 414 bytes (max 510)
++ mk obj/kern/kernel.img
++ mk obj/fs/fsformat
++ cc[USER] user/init.c
++ ld obj/user/init
++ cc[USER] user/cat.c
++ ld obj/user/cat
++ cc[USER] user/echo.c
++ ld obj/user/echo
++ cc[USER] user/ls.c
++ ld obj/user/ls
++ cc[USER] user/lsfd.c
++ ld obj/user/lsfd
++ cc[USER] user/num.c
++ ld obj/user/num
++ cc[USER] user/sh.c
++ ld obj/user/sh
++ mk obj/fs/clean-fs.img
++ cp obj/fs/clean-fs.img obj/fs/fs.img
+make[1]: Leaving directory '/home/vagrant/jos'
+internal FS tests [fs/test.c]: OK (1.6s)
+  fs i/o: OK
+  check_bc: OK
+  check_super: OK
+  check_cur_blk: OK
+  alloc_block: OK
+  file_open: OK
+  file_get_block: OK
+  file_flush/file_truncate/file rewrite: OK
+testfile: OK (3.7s)
+  serve_open/file_stat/file_close: OK
+  file_read: OK
+  file_write: OK
+  file_read after file_write: OK
+  open: OK
+  large file: OK
+spawn via spawnhello: OK (1.3s)
+Protection I/O space: OK (1.4s)
+PTE_SHARE [testpteshare]: OK (2.4s)
+PTE_SHARE [testfdsharing]: OK (1.4s)
+start the shell [icode]: Timeout! OK (61.2s)
+testshell: OK (9.7s)
+primespipe: OK (13.0s)
+Score: 100% (150/150)
+```
+
+  
