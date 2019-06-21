@@ -11,7 +11,7 @@ fs_test(void)
 	struct File *f;
 	int r;
 	char *blk;
-	uint32_t *bits;
+	uint32_t *bits, inode_num_file;
 
 	uint32_t last_cur_blk = super->s_cur_blk;
 	// allocate block
@@ -23,15 +23,16 @@ fs_test(void)
 	assert(r < super->s_cur_blk);
 	cprintf("alloc_block is good\n");
 
-	if ((r = file_open("/not-found", &f)) < 0 && r != -E_NOT_FOUND)
+	if ((r = file_open("/not-found", &inode_num_file)) < 0 && r != -E_NOT_FOUND)
 		panic("file_open /not-found: %e", r);
 	else if (r == 0)
 		panic("file_open /not-found succeeded!");
-	if ((r = file_open("/newmotd", &f)) < 0)
+	if ((r = file_open("/newmotd", &inode_num_file)) < 0)
 		panic("file_open /newmotd: %e", r);
+	f = (struct File *) lfs_tmp_imap[inode_num_file];
 	cprintf("file_open is good\n");
 
-	if ((r = file_get_block(f, 0, &blk)) < 0)
+	if ((r = file_get_block(inode_num_file, 0, &blk)) < 0)
 		panic("file_get_block: %e", r);
 	if (strcmp(blk, msg) != 0)
 		panic("file_get_block returned wrong data");
@@ -39,24 +40,24 @@ fs_test(void)
 
 	*(volatile char*)blk = *(volatile char*)blk;
 	assert((uvpt[PGNUM(blk)] & PTE_D));
-	file_flush(f);
+	file_flush(inode_num_file);
 	assert(!(uvpt[PGNUM(blk)] & PTE_D));
 	cprintf("file_flush is good\n");
 
-	if ((r = file_set_size(f, 0)) < 0)
+	if ((r = file_set_size(inode_num_file, 0)) < 0)
 		panic("file_set_size: %e", r);
 	assert(f->f_direct[0] == 0);
 	assert(!(uvpt[PGNUM(f)] & PTE_D));
 	cprintf("file_truncate is good\n");
 
-	if ((r = file_set_size(f, strlen(msg))) < 0)
+	if ((r = file_set_size(inode_num_file, strlen(msg))) < 0)
 		panic("file_set_size 2: %e", r);
 	assert(!(uvpt[PGNUM(f)] & PTE_D));
-	if ((r = file_get_block(f, 0, &blk)) < 0)
+	if ((r = file_get_block(inode_num_file, 0, &blk)) < 0)
 		panic("file_get_block 2: %e", r);
 	strcpy(blk, msg);
 	assert((uvpt[PGNUM(blk)] & PTE_D));
-	file_flush(f);
+	file_flush(inode_num_file);
 	assert(!(uvpt[PGNUM(blk)] & PTE_D));
 	assert(!(uvpt[PGNUM(f)] & PTE_D));
 	cprintf("file rewrite is good\n");

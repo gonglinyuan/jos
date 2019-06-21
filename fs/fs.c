@@ -158,10 +158,13 @@ fs_init(void)
 // Analogy: This is like pgdir_walk for files.
 // Hint: Don't forget to clear any block you allocate.
 static int
-file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool alloc)
+file_block_walk(uint32_t inode_num, uint32_t filebno, uint32_t **ppdiskbno, bool alloc)
 {
-	// LAB 5: Your code here.
 	int r;
+	struct File *f;
+
+	f = (struct File *) lfs_tmp_imap[inode_num];
+
 	if (filebno < NDIRECT) {
 		*ppdiskbno = f->f_direct + filebno;
 	} else if (filebno < NDIRECT + NINDIRECT) {
@@ -191,12 +194,12 @@ file_block_walk(struct File *f, uint32_t filebno, uint32_t **ppdiskbno, bool all
 //
 // Hint: Use file_block_walk and alloc_block.
 int
-file_get_block(struct File *f, uint32_t filebno, char **blk)
+file_get_block(uint32_t inode_num, uint32_t filebno, char **blk)
 {
 	// LAB 5: Your code here.
 	int r;
 	uint32_t *ppdiskbno;
-	if ((r = file_block_walk(f, filebno, &ppdiskbno, true)) < 0) {
+	if ((r = file_block_walk(inode_num, filebno, &ppdiskbno, true)) < 0) {
 		return r;
 	}
 	if (!(*ppdiskbno)) {
@@ -214,12 +217,15 @@ file_get_block(struct File *f, uint32_t filebno, char **blk)
 // Returns 0 and sets *file on success, < 0 on error.  Errors are:
 //	-E_NOT_FOUND if the file is not found
 static int
-dir_lookup(struct File *dir, const char *name, struct File **file)
+dir_lookup(uint32_t inode_num_dir, const char *name, uint32_t *p_inode_num_file)
 {
 	int r;
 	uint32_t i, j, nblock;
 	char *blk;
 	uint32_t *f;
+	struct File *dir;
+
+	dir = (struct File *) lfs_tmp_imap[inode_num_dir];
 
 	// Search dir for name.
 	// We maintain the invariant that the size of a directory-file
@@ -227,14 +233,14 @@ dir_lookup(struct File *dir, const char *name, struct File **file)
 	assert((dir->f_size % BLKSIZE) == 0);
 	nblock = dir->f_size / BLKSIZE;
 	for (i = 0; i < nblock; i++) {
-		if ((r = file_get_block(dir, i, &blk)) < 0)
+		if ((r = file_get_block(inode_num_dir, i, &blk)) < 0)
 			return r;
 		f = (uint32_t*) blk;
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
 			if (f[j]) {
 				struct File *pf = (struct File*) lfs_tmp_imap[f[j]];
 				if (strcmp(pf->f_name, name) == 0) {
-					*file = pf;
+					*p_inode_num_file = f[j];
 					return 0;
 				}
 			}
@@ -246,34 +252,37 @@ dir_lookup(struct File *dir, const char *name, struct File **file)
 // Set *file to point at a free File structure in dir.  The caller is
 // responsible for filling in the File fields.
 static int
-dir_alloc_file(struct File *dir, struct File **file)
+dir_alloc_file(uint32_t inode_num_dir, uint32_t *p_inode_num_file)
 {
 	int r;
 	uint32_t nblock, i, j;
 	char *blk;
 	uint32_t *f;
+	struct File *dir;
+
+	dir = (struct File *) lfs_tmp_imap[inode_num_dir];
 
 	assert((dir->f_size % BLKSIZE) == 0);
 	nblock = dir->f_size / BLKSIZE;
 	for (i = 0; i < nblock; i++) {
-		if ((r = file_get_block(dir, i, &blk)) < 0)
+		if ((r = file_get_block(inode_num_dir, i, &blk)) < 0)
 			return r;
 		f = (uint32_t*) blk;
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
 			if (!f[j]) {
 				f[j] = alloc_inode();
-				*file = (struct File*) lfs_tmp_imap[f[j]];
+				*p_inode_num_file = f[j];
 				return 0;
 			}
 		}
 	}
 	dir->f_size += BLKSIZE;
-	if ((r = file_get_block(dir, i, &blk)) < 0)
+	if ((r = file_get_block(inode_num_dir, i, &blk)) < 0)
 		return r;
 	memset(blk, 0x00, BLKSIZE);
 	f = (uint32_t*) blk;
 	f[0] = alloc_inode();
-	*file = (struct File*) lfs_tmp_imap[f[0]];
+	*p_inode_num_file = f[0];
 	return 0;
 }
 
@@ -293,25 +302,28 @@ skip_slash(const char *p)
 // it should be in, set *pdir and copy the final path
 // element into lastelem.
 static int
-walk_path(const char *path, struct File **pdir, struct File **pf, char *lastelem)
+walk_path(const char *path, uint32_t *p_inode_num_dir, uint32_t *p_inode_num_file, char *lastelem)
 {
 	const char *p;
 	char name[MAXNAMELEN];
-	struct File *dir, *f;
+	struct File *dir;
+	uint32_t inode_num_dir, inode_num_file;
 	int r;
 
 	// if (*path != '/')
 	//	return -E_BAD_PATH;
 	path = skip_slash(path);
-	f = &super->s_root;
+	inode_num_file = super->s_root;
+	inode_num_dir = 0;
 	dir = 0;
 	name[0] = 0;
 
-	if (pdir)
-		*pdir = 0;
-	*pf = 0;
+	if (p_inode_num_dir)
+		*p_inode_num_dir = 0;
+	*p_inode_num_file = 0;
 	while (*path != '\0') {
-		dir = f;
+		inode_num_dir = inode_num_file;
+		dir = (struct File *) lfs_tmp_imap[inode_num_dir];
 		p = path;
 		while (*path != '/' && *path != '\0')
 			path++;
@@ -324,21 +336,21 @@ walk_path(const char *path, struct File **pdir, struct File **pf, char *lastelem
 		if (dir->f_type != FTYPE_DIR)
 			return -E_NOT_FOUND;
 
-		if ((r = dir_lookup(dir, name, &f)) < 0) {
+		if ((r = dir_lookup(inode_num_dir, name, &inode_num_file)) < 0) {
 			if (r == -E_NOT_FOUND && *path == '\0') {
-				if (pdir)
-					*pdir = dir;
+				if (p_inode_num_dir)
+					*p_inode_num_dir = inode_num_dir;
 				if (lastelem)
 					strcpy(lastelem, name);
-				*pf = 0;
+				*p_inode_num_file = 0;
 			}
 			return r;
 		}
 	}
 
-	if (pdir)
-		*pdir = dir;
-	*pf = f;
+	if (p_inode_num_dir)
+		*p_inode_num_dir = inode_num_dir;
+	*p_inode_num_file = inode_num_file;
 	return 0;
 }
 
@@ -349,42 +361,47 @@ walk_path(const char *path, struct File **pdir, struct File **pf, char *lastelem
 // Create "path".  On success set *pf to point at the file and return 0.
 // On error return < 0.
 int
-file_create(const char *path, struct File **pf)
+file_create(const char *path, uint32_t *p_inode_num)
 {
 	char name[MAXNAMELEN];
 	int r;
-	struct File *dir, *f;
+	struct File *f;
+	uint32_t inode_num_dir, inode_num_file;
 
-	if ((r = walk_path(path, &dir, &f, name)) == 0)
+	if ((r = walk_path(path, &inode_num_dir, &inode_num_file, name)) == 0)
 		return -E_FILE_EXISTS;
-	if (r != -E_NOT_FOUND || dir == 0)
+	if (r != -E_NOT_FOUND || inode_num_dir == 0)
 		return r;
-	if ((r = dir_alloc_file(dir, &f)) < 0)
+	if ((r = dir_alloc_file(inode_num_dir, &inode_num_file)) < 0)
 		return r;
+	f = (struct File *) lfs_tmp_imap[inode_num_file];
 
 	strcpy(f->f_name, name);
-	*pf = f;
-	file_flush(dir);
+	*p_inode_num = inode_num_file;
+	file_flush(inode_num_dir);
 	return 0;
 }
 
 // Open "path".  On success set *pf to point at the file and return 0.
 // On error return < 0.
 int
-file_open(const char *path, struct File **pf)
+file_open(const char *path, uint32_t *p_inode_num)
 {
-	return walk_path(path, 0, pf, 0);
+	return walk_path(path, 0, p_inode_num, 0);
 }
 
 // Read count bytes from f into buf, starting from seek position
 // offset.  This meant to mimic the standard pread function.
 // Returns the number of bytes read, < 0 on error.
 ssize_t
-file_read(struct File *f, void *buf, size_t count, off_t offset)
+file_read(uint32_t inode_num, void *buf, size_t count, off_t offset)
 {
 	int r, bn;
 	off_t pos;
 	char *blk;
+	struct File *f;
+
+	f = (struct File *) lfs_tmp_imap[inode_num];
 
 	if (offset >= f->f_size)
 		return 0;
@@ -392,7 +409,7 @@ file_read(struct File *f, void *buf, size_t count, off_t offset)
 	count = MIN(count, f->f_size - offset);
 
 	for (pos = offset; pos < offset + count; ) {
-		if ((r = file_get_block(f, pos / BLKSIZE, &blk)) < 0)
+		if ((r = file_get_block(inode_num, pos / BLKSIZE, &blk)) < 0)
 			return r;
 		bn = MIN(BLKSIZE - pos % BLKSIZE, offset + count - pos);
 		memmove(buf, blk + pos % BLKSIZE, bn);
@@ -409,19 +426,22 @@ file_read(struct File *f, void *buf, size_t count, off_t offset)
 // Extends the file if necessary.
 // Returns the number of bytes written, < 0 on error.
 int
-file_write(struct File *f, const void *buf, size_t count, off_t offset)
+file_write(uint32_t inode_num, const void *buf, size_t count, off_t offset)
 {
 	int r, bn;
 	off_t pos;
 	char *blk;
+	struct File *f;
+
+	f = (struct File *) lfs_tmp_imap[inode_num];
 
 	// Extend file if necessary
 	if (offset + count > f->f_size)
-		if ((r = file_set_size(f, offset + count)) < 0)
+		if ((r = file_set_size(inode_num, offset + count)) < 0)
 			return r;
 
 	for (pos = offset; pos < offset + count; ) {
-		if ((r = file_get_block(f, pos / BLKSIZE, &blk)) < 0)
+		if ((r = file_get_block(inode_num, pos / BLKSIZE, &blk)) < 0)
 			return r;
 		bn = MIN(BLKSIZE - pos % BLKSIZE, offset + count - pos);
 		memmove(blk + pos % BLKSIZE, buf, bn);
@@ -435,12 +455,15 @@ file_write(struct File *f, const void *buf, size_t count, off_t offset)
 // Remove a block from file f.  If it's not there, just silently succeed.
 // Returns 0 on success, < 0 on error.
 static int
-file_free_block(struct File *f, uint32_t filebno)
+file_free_block(uint32_t inode_num, uint32_t filebno)
 {
 	int r;
 	uint32_t *ptr;
+	struct File *f;
 
-	if ((r = file_block_walk(f, filebno, &ptr, 0)) < 0)
+	f = (struct File *) lfs_tmp_imap[inode_num];
+
+	if ((r = file_block_walk(inode_num, filebno, &ptr, 0)) < 0)
 		return r;
 	if (*ptr) {
 		free_block(*ptr);
@@ -459,15 +482,18 @@ file_free_block(struct File *f, uint32_t filebno)
 // whether it's valid!)
 // Do not change f->f_size.
 static void
-file_truncate_blocks(struct File *f, off_t newsize)
+file_truncate_blocks(uint32_t inode_num, off_t newsize)
 {
 	int r;
 	uint32_t bno, old_nblocks, new_nblocks;
+	struct File *f;
+
+	f = (struct File *) lfs_tmp_imap[inode_num];
 
 	old_nblocks = (f->f_size + BLKSIZE - 1) / BLKSIZE;
 	new_nblocks = (newsize + BLKSIZE - 1) / BLKSIZE;
 	for (bno = new_nblocks; bno < old_nblocks; bno++)
-		if ((r = file_free_block(f, bno)) < 0)
+		if ((r = file_free_block(inode_num, bno)) < 0)
 			cprintf("warning: file_free_block: %e", r);
 
 	if (new_nblocks <= NDIRECT && f->f_indirect) {
@@ -478,10 +504,14 @@ file_truncate_blocks(struct File *f, off_t newsize)
 
 // Set the size of file f, truncating or extending as necessary.
 int
-file_set_size(struct File *f, off_t newsize)
+file_set_size(uint32_t inode_num, off_t newsize)
 {
+	struct File *f;
+
+	f = (struct File *) lfs_tmp_imap[inode_num];
+
 	if (f->f_size > newsize)
-		file_truncate_blocks(f, newsize);
+		file_truncate_blocks(inode_num, newsize);
 	f->f_size = newsize;
 	flush_block(f);
 	return 0;
@@ -492,13 +522,16 @@ file_set_size(struct File *f, off_t newsize)
 // Translate the file block number into a disk block number
 // and then check whether that disk block is dirty.  If so, write it out.
 void
-file_flush(struct File *f)
+file_flush(uint32_t inode_num)
 {
 	int i;
 	uint32_t *pdiskbno;
+	struct File *f;
+
+	f = (struct File *) lfs_tmp_imap[inode_num];
 
 	for (i = 0; i < (f->f_size + BLKSIZE - 1) / BLKSIZE; i++) {
-		if (file_block_walk(f, i, &pdiskbno, 0) < 0 ||
+		if (file_block_walk(inode_num, i, &pdiskbno, 0) < 0 ||
 		    pdiskbno == NULL || *pdiskbno == 0)
 			continue;
 		flush_block(diskaddr(*pdiskbno));

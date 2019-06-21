@@ -31,7 +31,7 @@
 
 struct OpenFile {
 	uint32_t o_fileid;	// file id
-	struct File *o_file;	// mapped descriptor for open file
+	uint32_t o_file;	// inode num for open file
 	int o_mode;		// open mode
 	struct Fd *o_fd;	// Fd page
 };
@@ -104,10 +104,10 @@ serve_open(envid_t envid, struct Fsreq_open *req,
 	   void **pg_store, int *perm_store)
 {
 	char path[MAXPATHLEN];
-	struct File *f;
 	int fileid;
 	int r;
 	struct OpenFile *o;
+	uint32_t inode_num;
 
 	if (debug)
 		cprintf("serve_open %08x %s 0x%x\n", envid, req->req_path, req->req_omode);
@@ -126,7 +126,7 @@ serve_open(envid_t envid, struct Fsreq_open *req,
 
 	// Open the file
 	if (req->req_omode & O_CREAT) {
-		if ((r = file_create(path, &f)) < 0) {
+		if ((r = file_create(path, &inode_num)) < 0) {
 			if (!(req->req_omode & O_EXCL) && r == -E_FILE_EXISTS)
 				goto try_open;
 			if (debug)
@@ -135,7 +135,7 @@ serve_open(envid_t envid, struct Fsreq_open *req,
 		}
 	} else {
 try_open:
-		if ((r = file_open(path, &f)) < 0) {
+		if ((r = file_open(path, &inode_num)) < 0) {
 			if (debug)
 				cprintf("file_open failed: %e", r);
 			return r;
@@ -144,20 +144,20 @@ try_open:
 
 	// Truncate
 	if (req->req_omode & O_TRUNC) {
-		if ((r = file_set_size(f, 0)) < 0) {
+		if ((r = file_set_size(inode_num, 0)) < 0) {
 			if (debug)
 				cprintf("file_set_size failed: %e", r);
 			return r;
 		}
 	}
-	if ((r = file_open(path, &f)) < 0) {
+	if ((r = file_open(path, &inode_num)) < 0) {
 		if (debug)
 			cprintf("file_open failed: %e", r);
 		return r;
 	}
 
 	// Save the file pointer
-	o->o_file = f;
+	o->o_file = inode_num;
 
 	// Fill out the Fd structure
 	o->o_fd->fd_file.id = o->o_fileid;
@@ -258,6 +258,7 @@ serve_stat(envid_t envid, union Fsipc *ipc)
 	struct Fsreq_stat *req = &ipc->stat;
 	struct Fsret_stat *ret = &ipc->statRet;
 	struct OpenFile *o;
+	struct File *f;
 	int r;
 
 	if (debug)
@@ -266,9 +267,10 @@ serve_stat(envid_t envid, union Fsipc *ipc)
 	if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0)
 		return r;
 
-	strcpy(ret->ret_name, o->o_file->f_name);
-	ret->ret_size = o->o_file->f_size;
-	ret->ret_isdir = (o->o_file->f_type == FTYPE_DIR);
+	f = (struct File *) lfs_tmp_imap[o->o_file];
+	strcpy(ret->ret_name, f->f_name);
+	ret->ret_size = f->f_size;
+	ret->ret_isdir = (f->f_type == FTYPE_DIR);
 	return 0;
 }
 

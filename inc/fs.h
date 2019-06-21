@@ -57,7 +57,7 @@ struct File {
 struct Super {
 	uint32_t s_magic;		// Magic number: FS_MAGIC
 	uint32_t s_nblocks;		// Total number of blocks on disk
-	struct File s_root;		// Root directory node
+	uint32_t s_root;		// Inode num of root directory
 	uint32_t s_cur_blk;		// (LFS) Current disk block 
 };
 

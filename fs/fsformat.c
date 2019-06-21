@@ -88,7 +88,7 @@ alloc(uint32_t bytes)
 	return start;
 }
 
-void
+struct File *
 opendisk(const char *name)
 {
 	int r, diskfd;
@@ -111,11 +111,16 @@ opendisk(const char *name)
 	super = alloc(BLKSIZE);
 	super->s_magic = FS_MAGIC;
 	super->s_nblocks = nblocks;
-	super->s_root.f_type = FTYPE_DIR;
-	strcpy(super->s_root.f_name, "/");
+	super->s_root = 1;
 
 	imap = alloc((nblocks / INODE_ENT_BLK) * BLKSIZE);
 	memset(imap, 0x00, (nblocks / INODE_ENT_BLK) * BLKSIZE);
+
+	struct File *f_root = alloc(BLKSIZE);
+	f_root->f_type = FTYPE_DIR;
+	strcpy(f_root->f_name, "/");
+
+	return f_root;
 }
 
 void
@@ -172,8 +177,8 @@ finishdir(struct Dir *d)
 	uint32_t *start2 = alloc(d->n * sizeof(uint32_t));
 	memmove(start, d->ents, size);
 	for (uint32_t i = 0; i < d->n; ++i) {
-		imap[i + 1] = (uint32_t)(start + i) - (uint32_t) diskmap + 0x10000000;
-		start2[i] = i + 1;
+		imap[i + 2] = (uint32_t)(start + i) - (uint32_t) diskmap + 0x10000000;
+		start2[i] = i + 2;
 	}
 	finishfile(d->f, blockof(start2), ROUNDUP(d->n * sizeof(uint32_t), BLKSIZE));
 	free(d->ents);
@@ -234,12 +239,13 @@ main(int argc, char **argv)
 	if (*s || s == argv[2] || nblocks < 2 || nblocks > 1024)
 		usage();
 
-	opendisk(argv[1]);
+	struct File *f_root = opendisk(argv[1]);
 
-	startdir(&super->s_root, &root);
+	startdir(f_root, &root);
 	for (i = 3; i < argc; i++)
 		writefile(&root, argv[i]);
 	finishdir(&root);
+	imap[1] = (uint32_t) f_root - (uint32_t) diskmap + 0x10000000;
 
 	finishdisk();
 	return 0;
