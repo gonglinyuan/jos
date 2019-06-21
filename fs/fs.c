@@ -78,6 +78,47 @@ check_cur_blk(void)
 }
 
 // --------------------------------------------------------------
+// LFS Buffer
+// --------------------------------------------------------------
+
+int
+lfs_alloc_data_block(void)
+{
+	return lfs_data_buf_sz++;
+}
+
+struct File *
+lfs_imap_get(uint32_t inode_num)
+{
+	if (inode_num == 0 || inode_num >= INODE_ENT_BLK) {
+		return NULL;
+	} else if (lfs_imap_dirty[inode_num]) {
+		return &lfs_inode_buf[lfs_tmp_imap[inode_num]];
+	} else {
+		return (struct File *) lfs_tmp_imap[inode_num];
+	}
+}
+
+int
+lfs_alloc_inode(void)
+{
+	cprintf("lfs_alloc_inode\n");
+	// allocate inode number
+	uint32_t inode_num = 1;
+	while (lfs_imap_get(inode_num)) {
+		++inode_num;
+	}
+	if (inode_num >= super->s_nblocks) {
+		return -E_NO_DISK;
+	}
+	// allocate a slot in the inode buf and update tmp imap
+	lfs_tmp_imap[inode_num] = lfs_inode_buf_sz;
+	lfs_imap_dirty[inode_num] = true;
+	lfs_inode_buf_sz++;
+	return inode_num;
+}
+
+// --------------------------------------------------------------
 // Inode map
 // --------------------------------------------------------------
 
@@ -232,7 +273,7 @@ dir_lookup(struct File *dir, const char *name, struct File **file)
 		f = (uint32_t*) blk;
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
 			if (f[j]) {
-				struct File *pf = (struct File*) lfs_tmp_imap[f[j]];
+				struct File *pf = lfs_imap_get(f[j]);
 				if (strcmp(pf->f_name, name) == 0) {
 					*file = pf;
 					return 0;
@@ -261,8 +302,8 @@ dir_alloc_file(struct File *dir, struct File **file)
 		f = (uint32_t*) blk;
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
 			if (!f[j]) {
-				f[j] = alloc_inode();
-				*file = (struct File*) lfs_tmp_imap[f[j]];
+				f[j] = lfs_alloc_inode();
+				*file = lfs_imap_get(f[j]);
 				return 0;
 			}
 		}
@@ -272,8 +313,8 @@ dir_alloc_file(struct File *dir, struct File **file)
 		return r;
 	memset(blk, 0x00, BLKSIZE);
 	f = (uint32_t*) blk;
-	f[0] = alloc_inode();
-	*file = (struct File*) lfs_tmp_imap[f[0]];
+	f[0] = lfs_alloc_inode();
+	*file = lfs_imap_get(f[0]);
 	return 0;
 }
 
@@ -483,7 +524,9 @@ file_set_size(struct File *f, off_t newsize)
 	if (f->f_size > newsize)
 		file_truncate_blocks(f, newsize);
 	f->f_size = newsize;
-	flush_block(f);
+	if ((uint32_t) f > DISKMAP) {
+		flush_block(f);
+	}
 	return 0;
 }
 
@@ -503,7 +546,9 @@ file_flush(struct File *f)
 			continue;
 		flush_block(diskaddr(*pdiskbno));
 	}
-	flush_block(f);
+	if ((uint32_t) f > DISKMAP) {
+		flush_block(f);
+	}
 	if (f->f_indirect)
 		flush_block(diskaddr(f->f_indirect));
 }
@@ -521,12 +566,31 @@ fs_sync(void)
 void
 lfs_sync_from_disk(void)
 {
+	lfs_inode_buf_sz = 0;
+	lfs_data_buf_sz = 0;
 	memmove(lfs_tmp_imap, imap, sizeof(lfs_tmp_imap));
+	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
 }
 
 void
 lfs_sync_to_disk(void)
 {
+	// Write back inode
+	if (lfs_inode_buf_sz) {
+		struct File *addr = diskaddr(super->s_cur_blk++);
+		memmove(addr, lfs_inode_buf, sizeof(lfs_inode_buf));
+		flush_block(addr);
+		for (uint32_t i = 0; i < INODE_ENT_BLK; ++i) {
+			if (lfs_imap_dirty[i]) {
+				lfs_tmp_imap[i] = (uint32_t)(addr + lfs_tmp_imap[i]);
+				lfs_imap_dirty[i] = false;
+			}
+		}
+		lfs_inode_buf_sz = 0;
+	}
+	lfs_data_buf_sz = 0;
+	// Write back imap
 	memmove(imap, lfs_tmp_imap, sizeof(lfs_tmp_imap));
+	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
 	flush_block(imap);
 }
