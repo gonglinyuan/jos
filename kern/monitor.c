@@ -31,7 +31,8 @@ static struct Command commands[] = {
 	{ "setmapping", "Set the bits on the PTE", mon_setmapping },
 	{ "dumpmemory", "Display a range of physical or virtual memory", mon_dumpmemory },
 	{ "continue", "Continue running", mon_continue },
-	{ "stepi", "step to the next instruction", mon_stepi }
+	{ "stepi", "step to the next instruction", mon_stepi },
+	{ "bt", "bt", mon_backtrace}
 };
 
 /***** Implementations of basic kernel monitor commands *****/
