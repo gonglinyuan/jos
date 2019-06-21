@@ -8,7 +8,7 @@ static char *msg = "This is the NEW message of the day!\n\n";
 void
 fs_test(void)
 {
-	struct File *f;
+	const struct File *f;
 	int r;
 	char *blk;
 	uint32_t *bits, inode_num_file;
@@ -29,7 +29,7 @@ fs_test(void)
 		panic("file_open /not-found succeeded!");
 	if ((r = file_open("/newmotd", &inode_num_file)) < 0)
 		panic("file_open /newmotd: %e", r);
-	f = (struct File *) lfs_tmp_imap[inode_num_file];
+	f = lfs_imap_get_for_read(inode_num_file);
 	cprintf("file_open is good\n");
 
 	if ((r = file_get_block(inode_num_file, 0, &blk)) < 0)
@@ -46,6 +46,8 @@ fs_test(void)
 
 	if ((r = file_set_size(inode_num_file, 0)) < 0)
 		panic("file_set_size: %e", r);
+	lfs_sync_to_disk();
+	f = lfs_imap_get_for_read(inode_num_file);
 	assert(f->f_direct[0] == 0);
 	assert(!(uvpt[PGNUM(f)] & PTE_D));
 	cprintf("file_truncate is good\n");

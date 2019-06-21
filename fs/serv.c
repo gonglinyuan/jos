@@ -258,7 +258,7 @@ serve_stat(envid_t envid, union Fsipc *ipc)
 	struct Fsreq_stat *req = &ipc->stat;
 	struct Fsret_stat *ret = &ipc->statRet;
 	struct OpenFile *o;
-	struct File *f;
+	const struct File *f;
 	int r;
 
 	if (debug)
@@ -267,7 +267,8 @@ serve_stat(envid_t envid, union Fsipc *ipc)
 	if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0)
 		return r;
 
-	f = (struct File *) lfs_tmp_imap[o->o_file];
+	f = lfs_imap_get_for_read(o->o_file);
+
 	strcpy(ret->ret_name, f->f_name);
 	ret->ret_size = f->f_size;
 	ret->ret_isdir = (f->f_type == FTYPE_DIR);

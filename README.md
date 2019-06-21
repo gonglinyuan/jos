@@ -407,7 +407,7 @@ lfs_sync_to_disk(void)
 
 I added a call to `lfs_sync_from_disk()` at the end of `fs_init()` in `fs/fs.c`; I also added a call to `lfs_sync_to_disk()`  at the end of the main loop of `serve()` in `fs/serv.c`.
 
-**Use Inode Numbers in File System APIs**
+**Use Inode Numbers in File System APIs.**
 
 In the JOS file system, `fs/fs.h` exposes some file APIs to `fs/serv.c`. They are: `file_get_block`, `file_create`, `file_open`, `file_read`, `file_write`, `file_set_size`, and `file_flush`. In the lab 5 of JOS, all these APIs use `struct File *` as arguments to pass file handlers. However, to make sure that we can implement LFS in next stages, and because we have already implemented a Unix-like inode structure, we have to change these APIs to use *inode number*s rather than `struct File *`s as arguments.
 
@@ -867,6 +867,130 @@ for (i = 3; i < argc; i++)
     writefile(&root, argv[i]);
 finishdir(&root);
 imap[1] = (uint32_t) f_root - (uint32_t) diskmap + 0x10000000;
+```
+
+**Log-structured Inode System.**
+
+In this stage, we are ready to implement the LFS-like inode operations. We never overwrite any inodes in place; instead, we append all updated inodes after the end of the used part of the disk, and we also update imaps to point to the new inodes. In this way, our file system has some good *crash-recovery* characteristics: all the histories of inode updates are kept: whenever the machine crashes, we can still recover a consistent file system structure. In addition, the write speed of our file system will increase, since we buffer inode updates and write them as a *sequential* segment together into the disk.
+
+In `fs/fs.h`, I defined some data structures:
+
+```c
+#define LFS_BUFSIZE	(BLKSIZE / 256)	    // size of LFS file update buffer
+
+bool lfs_imap_dirty[INODE_ENT_BLK];
+struct File lfs_inode_buf[LFS_BUFSIZE];
+uint32_t lfs_inode_buf_sz;
+
+const struct File *lfs_imap_get_for_read(uint32_t inode_num);
+```
+
+In `fs/fs.c`, I defined some utility functions to manage the LFS buffer:
+
+```c
+// --------------------------------------------------------------
+// LFS Inode Buffer
+// --------------------------------------------------------------
+
+const struct File *
+lfs_imap_get_for_read(uint32_t inode_num)
+{
+	if (inode_num == 0 || inode_num >= INODE_ENT_BLK) {
+		return NULL;
+	} else if (lfs_imap_dirty[inode_num]) {
+		return (const struct File *) &lfs_inode_buf[lfs_tmp_imap[inode_num]];
+	} else {
+		return (const struct File *) lfs_tmp_imap[inode_num];
+	}
+}
+
+struct File *
+lfs_imap_get_for_write(uint32_t inode_num)
+{
+	if (inode_num == 0 || inode_num >= INODE_ENT_BLK) {
+		return NULL;
+	}
+	if (!lfs_imap_dirty[inode_num]) {
+		lfs_inode_buf[lfs_inode_buf_sz] = *(struct File *) lfs_tmp_imap[inode_num];
+		lfs_tmp_imap[inode_num] = lfs_inode_buf_sz;
+		lfs_imap_dirty[inode_num] = true;
+		lfs_inode_buf_sz++;
+	}
+	return &lfs_inode_buf[lfs_tmp_imap[inode_num]];
+}
+
+uint32_t
+lfs_alloc_inode(void)
+{
+	// allocate inode number
+	uint32_t inode_num = 1;
+	while (lfs_imap_get_for_read(inode_num)) {
+		++inode_num;
+	}
+	if (inode_num >= super->s_nblocks) {
+		return -E_NO_DISK;
+	}
+	// allocate a slot in the inode buf and update tmp imap
+	lfs_tmp_imap[inode_num] = lfs_inode_buf_sz;
+	lfs_imap_dirty[inode_num] = true;
+	lfs_inode_buf_sz++;
+	return inode_num;
+}
+
+void
+lfs_free_inode(uint32_t inode_num)
+{
+	assert(inode_num > 0 && inode_num < super->s_nblocks);
+	// update imap
+	lfs_tmp_imap[inode_num] = 0;
+	lfs_imap_dirty[inode_num] = false;
+}
+```
+
+The old function to manages inodes, `alloc_inode()` and `free_inode()`, are now deprecated and removed from the source code.
+
+In `fs/fs.c`, I also changed the functions to synchronize LFS and the disk: I make them also write back the buffered inode updates to the disk and clear the dirty bits in the array:
+
+```c
+void
+lfs_sync_from_disk(void)
+{
+	lfs_inode_buf_sz = 0;
+	memmove(lfs_tmp_imap, imap, sizeof(lfs_tmp_imap));
+	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
+}
+
+void
+lfs_sync_to_disk(void)
+{
+	// Write back inode
+	if (lfs_inode_buf_sz) {
+		struct File *addr = diskaddr(super->s_cur_blk++);
+		memmove(addr, lfs_inode_buf, sizeof(lfs_inode_buf));
+		flush_block(addr);
+		for (uint32_t i = 0; i < INODE_ENT_BLK; ++i) {
+			if (lfs_imap_dirty[i]) {
+				lfs_tmp_imap[i] = (uint32_t)(addr + lfs_tmp_imap[i]);
+				lfs_imap_dirty[i] = false;
+			}
+		}
+		lfs_inode_buf_sz = 0;
+	}
+	// Write back imap
+	memmove(imap, lfs_tmp_imap, sizeof(lfs_tmp_imap));
+	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
+	flush_block(imap);
+}
+```
+
+In `fs/fs.c` and `fs/serv.c`, I also changed all the references to `lfs_tmp_imap[]` to function calls to `lfs_imap_get_for_read()` or `lfs_imap_get_for_write()`.
+
+Another thing to notice is that we cannot "flush" a buffered inode since it is not in the disk. So I add some wrappers to `flush_block(f)` as a sanity check:
+
+```c
+if ((uint32_t) f > DISKMAP) {
+	flush_block(f);
+}
 ```
 
 **File Updates Buffering.**

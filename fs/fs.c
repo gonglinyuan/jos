@@ -78,36 +78,61 @@ check_cur_blk(void)
 }
 
 // --------------------------------------------------------------
-// Inode map
+// LFS Inode Buffer
 // --------------------------------------------------------------
 
-void
-free_inode(uint32_t inode_num)
+const struct File *
+lfs_imap_get_for_read(uint32_t inode_num)
 {
-	assert(inode_num > 0 && inode_num < super->s_nblocks);
-	// update imap
-	lfs_tmp_imap[inode_num] = 0;
+	if (inode_num == 0 || inode_num >= INODE_ENT_BLK) {
+		return NULL;
+	} else if (lfs_imap_dirty[inode_num]) {
+		return (const struct File *) &lfs_inode_buf[lfs_tmp_imap[inode_num]];
+	} else {
+		return (const struct File *) lfs_tmp_imap[inode_num];
+	}
 }
 
-int
-alloc_inode(void)
+struct File *
+lfs_imap_get_for_write(uint32_t inode_num)
 {
-	int r;
-	// allocate block and store inode
-	if ((r = alloc_block()) < 0) {
-		return r;
+	if (inode_num == 0 || inode_num >= INODE_ENT_BLK) {
+		return NULL;
 	}
-	struct File *addr = diskaddr(r);
-	// allocate inode number and update imap
+	if (!lfs_imap_dirty[inode_num]) {
+		lfs_inode_buf[lfs_inode_buf_sz] = *(struct File *) lfs_tmp_imap[inode_num];
+		lfs_tmp_imap[inode_num] = lfs_inode_buf_sz;
+		lfs_imap_dirty[inode_num] = true;
+		lfs_inode_buf_sz++;
+	}
+	return &lfs_inode_buf[lfs_tmp_imap[inode_num]];
+}
+
+uint32_t
+lfs_alloc_inode(void)
+{
+	// allocate inode number
 	uint32_t inode_num = 1;
-	while ((inode_num < super->s_nblocks) && lfs_tmp_imap[inode_num]) {
+	while (lfs_imap_get_for_read(inode_num)) {
 		++inode_num;
 	}
 	if (inode_num >= super->s_nblocks) {
 		return -E_NO_DISK;
 	}
-	lfs_tmp_imap[inode_num] = (uint32_t) addr;
+	// allocate a slot in the inode buf and update tmp imap
+	lfs_tmp_imap[inode_num] = lfs_inode_buf_sz;
+	lfs_imap_dirty[inode_num] = true;
+	lfs_inode_buf_sz++;
 	return inode_num;
+}
+
+void
+lfs_free_inode(uint32_t inode_num)
+{
+	assert(inode_num > 0 && inode_num < super->s_nblocks);
+	// update imap
+	lfs_tmp_imap[inode_num] = 0;
+	lfs_imap_dirty[inode_num] = false;
 }
 
 // --------------------------------------------------------------
@@ -161,19 +186,21 @@ static int
 file_block_walk(uint32_t inode_num, uint32_t filebno, uint32_t **ppdiskbno, bool alloc)
 {
 	int r;
-	struct File *f;
+	const struct File *f;
+	struct File *fw;
 
-	f = (struct File *) lfs_tmp_imap[inode_num];
+	f = lfs_imap_get_for_read(inode_num);
 
 	if (filebno < NDIRECT) {
-		*ppdiskbno = f->f_direct + filebno;
+		*ppdiskbno = (uint32_t *) f->f_direct + filebno;
 	} else if (filebno < NDIRECT + NINDIRECT) {
 		if (!f->f_indirect) {
 			if (alloc) {
+				fw = lfs_imap_get_for_write(inode_num);			
 				if ((r = alloc_block()) < 0) {
 					return r;
 				}
-				f->f_indirect = r;
+				fw->f_indirect = r;
 			} else {
 				return -E_NOT_FOUND;
 			}
@@ -223,9 +250,9 @@ dir_lookup(uint32_t inode_num_dir, const char *name, uint32_t *p_inode_num_file)
 	uint32_t i, j, nblock;
 	char *blk;
 	uint32_t *f;
-	struct File *dir;
+	const struct File *dir;
 
-	dir = (struct File *) lfs_tmp_imap[inode_num_dir];
+	dir = lfs_imap_get_for_read(inode_num_dir);
 
 	// Search dir for name.
 	// We maintain the invariant that the size of a directory-file
@@ -238,7 +265,7 @@ dir_lookup(uint32_t inode_num_dir, const char *name, uint32_t *p_inode_num_file)
 		f = (uint32_t*) blk;
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
 			if (f[j]) {
-				struct File *pf = (struct File*) lfs_tmp_imap[f[j]];
+				const struct File *pf = lfs_imap_get_for_read(f[j]);
 				if (strcmp(pf->f_name, name) == 0) {
 					*p_inode_num_file = f[j];
 					return 0;
@@ -260,7 +287,7 @@ dir_alloc_file(uint32_t inode_num_dir, uint32_t *p_inode_num_file)
 	uint32_t *f;
 	struct File *dir;
 
-	dir = (struct File *) lfs_tmp_imap[inode_num_dir];
+	dir = lfs_imap_get_for_write(inode_num_dir);
 
 	assert((dir->f_size % BLKSIZE) == 0);
 	nblock = dir->f_size / BLKSIZE;
@@ -270,7 +297,7 @@ dir_alloc_file(uint32_t inode_num_dir, uint32_t *p_inode_num_file)
 		f = (uint32_t*) blk;
 		for (j = 0; j < INODE_ENT_BLK; ++j) {
 			if (!f[j]) {
-				f[j] = alloc_inode();
+				f[j] = lfs_alloc_inode();
 				*p_inode_num_file = f[j];
 				return 0;
 			}
@@ -281,7 +308,7 @@ dir_alloc_file(uint32_t inode_num_dir, uint32_t *p_inode_num_file)
 		return r;
 	memset(blk, 0x00, BLKSIZE);
 	f = (uint32_t*) blk;
-	f[0] = alloc_inode();
+	f[0] = lfs_alloc_inode();
 	*p_inode_num_file = f[0];
 	return 0;
 }
@@ -306,7 +333,7 @@ walk_path(const char *path, uint32_t *p_inode_num_dir, uint32_t *p_inode_num_fil
 {
 	const char *p;
 	char name[MAXNAMELEN];
-	struct File *dir;
+	const struct File *dir;
 	uint32_t inode_num_dir, inode_num_file;
 	int r;
 
@@ -323,7 +350,7 @@ walk_path(const char *path, uint32_t *p_inode_num_dir, uint32_t *p_inode_num_fil
 	*p_inode_num_file = 0;
 	while (*path != '\0') {
 		inode_num_dir = inode_num_file;
-		dir = (struct File *) lfs_tmp_imap[inode_num_dir];
+		dir = lfs_imap_get_for_read(inode_num_dir);
 		p = path;
 		while (*path != '/' && *path != '\0')
 			path++;
@@ -374,7 +401,7 @@ file_create(const char *path, uint32_t *p_inode_num)
 		return r;
 	if ((r = dir_alloc_file(inode_num_dir, &inode_num_file)) < 0)
 		return r;
-	f = (struct File *) lfs_tmp_imap[inode_num_file];
+	f = lfs_imap_get_for_write(inode_num_file);
 
 	strcpy(f->f_name, name);
 	*p_inode_num = inode_num_file;
@@ -399,9 +426,9 @@ file_read(uint32_t inode_num, void *buf, size_t count, off_t offset)
 	int r, bn;
 	off_t pos;
 	char *blk;
-	struct File *f;
+	const struct File *f;
 
-	f = (struct File *) lfs_tmp_imap[inode_num];
+	f = lfs_imap_get_for_read(inode_num);
 
 	if (offset >= f->f_size)
 		return 0;
@@ -431,10 +458,10 @@ file_write(uint32_t inode_num, const void *buf, size_t count, off_t offset)
 	int r, bn;
 	off_t pos;
 	char *blk;
-	struct File *f;
+	const struct File *f;
 
-	f = (struct File *) lfs_tmp_imap[inode_num];
-
+	f = lfs_imap_get_for_read(inode_num);
+	
 	// Extend file if necessary
 	if (offset + count > f->f_size)
 		if ((r = file_set_size(inode_num, offset + count)) < 0)
@@ -459,9 +486,6 @@ file_free_block(uint32_t inode_num, uint32_t filebno)
 {
 	int r;
 	uint32_t *ptr;
-	struct File *f;
-
-	f = (struct File *) lfs_tmp_imap[inode_num];
 
 	if ((r = file_block_walk(inode_num, filebno, &ptr, 0)) < 0)
 		return r;
@@ -488,7 +512,7 @@ file_truncate_blocks(uint32_t inode_num, off_t newsize)
 	uint32_t bno, old_nblocks, new_nblocks;
 	struct File *f;
 
-	f = (struct File *) lfs_tmp_imap[inode_num];
+	f = lfs_imap_get_for_write(inode_num);
 
 	old_nblocks = (f->f_size + BLKSIZE - 1) / BLKSIZE;
 	new_nblocks = (newsize + BLKSIZE - 1) / BLKSIZE;
@@ -508,12 +532,14 @@ file_set_size(uint32_t inode_num, off_t newsize)
 {
 	struct File *f;
 
-	f = (struct File *) lfs_tmp_imap[inode_num];
+	f = lfs_imap_get_for_write(inode_num);
 
 	if (f->f_size > newsize)
 		file_truncate_blocks(inode_num, newsize);
 	f->f_size = newsize;
-	flush_block(f);
+	if ((uint32_t) f > DISKMAP) {
+		flush_block(f);
+	}
 	return 0;
 }
 
@@ -526,9 +552,9 @@ file_flush(uint32_t inode_num)
 {
 	int i;
 	uint32_t *pdiskbno;
-	struct File *f;
+	const struct File *f;
 
-	f = (struct File *) lfs_tmp_imap[inode_num];
+	f = lfs_imap_get_for_read(inode_num);
 
 	for (i = 0; i < (f->f_size + BLKSIZE - 1) / BLKSIZE; i++) {
 		if (file_block_walk(inode_num, i, &pdiskbno, 0) < 0 ||
@@ -536,7 +562,9 @@ file_flush(uint32_t inode_num)
 			continue;
 		flush_block(diskaddr(*pdiskbno));
 	}
-	flush_block(f);
+	if ((uint32_t) f > DISKMAP) {
+		flush_block((void *) f);
+	}
 	if (f->f_indirect)
 		flush_block(diskaddr(f->f_indirect));
 }
@@ -554,12 +582,29 @@ fs_sync(void)
 void
 lfs_sync_from_disk(void)
 {
+	lfs_inode_buf_sz = 0;
 	memmove(lfs_tmp_imap, imap, sizeof(lfs_tmp_imap));
+	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
 }
 
 void
 lfs_sync_to_disk(void)
 {
+	// Write back inode
+	if (lfs_inode_buf_sz) {
+		struct File *addr = diskaddr(super->s_cur_blk++);
+		memmove(addr, lfs_inode_buf, sizeof(lfs_inode_buf));
+		flush_block(addr);
+		for (uint32_t i = 0; i < INODE_ENT_BLK; ++i) {
+			if (lfs_imap_dirty[i]) {
+				lfs_tmp_imap[i] = (uint32_t)(addr + lfs_tmp_imap[i]);
+				lfs_imap_dirty[i] = false;
+			}
+		}
+		lfs_inode_buf_sz = 0;
+	}
+	// Write back imap
 	memmove(imap, lfs_tmp_imap, sizeof(lfs_tmp_imap));
+	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
 	flush_block(imap);
 }
