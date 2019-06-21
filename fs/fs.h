@@ -4,6 +4,7 @@
 #define SECTSIZE	512			// bytes per disk sector
 #define BLKSECTS	(BLKSIZE / SECTSIZE)	// sectors per block
 #define LFS_BUFSIZE	(BLKSIZE / 256)	    // size of LFS file update buffer
+#define MAX_BLOCKNO 2048
 
 /* Disk block n, when in memory, is mapped into the file system
  * server's address space at DISKMAP + (n*BLKSIZE). */
@@ -18,9 +19,12 @@ uint32_t *imap;		// inode map mapped in memory
 uint32_t lfs_tmp_imap[INODE_ENT_BLK];
 bool lfs_imap_dirty[INODE_ENT_BLK];
 struct File lfs_inode_buf[LFS_BUFSIZE];
+char lfs_data_buf[LFS_BUFSIZE][BLKSIZE];
 uint32_t lfs_inode_buf_sz;
+uint32_t lfs_data_buf_sz;
 
 const struct File *lfs_imap_get_for_read(uint32_t inode_num);
+uint32_t lfs_alloc_data(void);
 
 void lfs_sync_from_disk(void);
 void lfs_sync_to_disk(void);
@@ -53,7 +57,6 @@ void	fs_sync(void);
 
 /* int	map_block(uint32_t); */
 bool	block_is_free(uint32_t blockno);
-int	alloc_block(void);
 
 /* test.c */
 void	fs_test(void);

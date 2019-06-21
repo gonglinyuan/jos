@@ -993,11 +993,103 @@ if ((uint32_t) f > DISKMAP) {
 }
 ```
 
-**File Updates Buffering.**
+**Log-structured File System.**
 
-In this stage, we implement an in-memory buffer for file updates. This buffer keeps track of all the updates to the file system. After the buffer is full or after some time interval, the updates in the buffer is written to the hard disk. In the current stage, the performance of our file system cannot benefit from this buffering mechanic because the file updates are still multiple random writes to the disk. However, after we implement *persistent file updates* in the next stage, our FS will benefit a lot from the buffering. 
+Finally, we are able to move all data block updates into the log. Whenever we update a data block, we never overwrite the previous location; instead, we append the updated data block to the end of the used part of the disk. The appended inode and data together make up a "log" of disk updates, so our file system is called a *log-structured file system* (**LFS**).
 
-**Persistent File Updates.**
+In `fs/fs.h`, we define the buffer for data block updates:
 
-Traditional file systems (such as old Unix file system and the file system in the lab 5 of JOS) implement implement in place file modifications: for example, when you change some bytes of a file, the file system modifies the data block and the inode of the file exactly in its original place. In order to keep the file system consistent from accidental crashes, these traditional file systems usually introduce **Journaling**: keep an extra "log" for pending changes to the file system. However, in a LFS, we do not keep a file journal in somewhere else: the file system itself is a "log". Therefore, we do not modify anything in place in a LFS; instead, we *append* the changes to the file system.
+```c
+#define MAX_BLOCKNO 2048
+
+char lfs_data_buf[LFS_BUFSIZE][BLKSIZE];
+uint32_t lfs_data_buf_sz;
+
+uint32_t lfs_alloc_data(void);
+```
+
+In `fs/fs.c`, we define some utility functions to manage this data block buffer:
+
+```c
+// --------------------------------------------------------------
+// LFS data buffer
+// --------------------------------------------------------------
+
+const void *
+lfs_data_get_for_read(uint32_t blockno)
+{
+	assert(blockno > 0);
+	if (blockno >= super->s_cur_blk) {
+		memset(lfs_data_buf[blockno - super->s_cur_blk], 0x00, BLKSIZE);
+		return (const void *) lfs_data_buf[blockno - super->s_cur_blk];
+	} else {
+		return (const void *) diskaddr(blockno);
+	}
+}
+
+uint32_t
+lfs_alloc_data(void)
+{
+	uint32_t blockno = super->s_cur_blk + lfs_data_buf_sz;
+	lfs_data_buf_sz++;
+	return blockno;
+}
+```
+
+The old function to manages data blocks, `alloc_block()`, is now deprecated and removed from the source code.
+
+In `fs/fs.c`, I also changed the functions to synchronize LFS and the disk: I make them also write back the buffered block updates to the disk:
+
+```c
+void
+lfs_sync_from_disk(void)
+{
+	lfs_inode_buf_sz = 0;
+	lfs_data_buf_sz = 0;
+	memmove(lfs_tmp_imap, imap, sizeof(lfs_tmp_imap));
+	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
+}
+
+void
+lfs_sync_to_disk(void)
+{
+	// Write back data
+	if (lfs_data_buf_sz) {
+		char *addr = diskaddr(super->s_cur_blk);
+		super->s_cur_blk += lfs_data_buf_sz;
+		memmove(addr, lfs_data_buf, BLKSIZE * lfs_data_buf_sz);
+		for (uint32_t i = 0; i < lfs_data_buf_sz; ++i) {
+			flush_block(addr + (i * BLKSIZE));
+		}
+		lfs_data_buf_sz = 0;
+	}
+	// Write back inode
+	if (lfs_inode_buf_sz) {
+		struct File *addr = diskaddr(super->s_cur_blk++);
+		memmove(addr, lfs_inode_buf, sizeof(lfs_inode_buf));
+		flush_block(addr);
+		for (uint32_t i = 0; i < INODE_ENT_BLK; ++i) {
+			if (lfs_imap_dirty[i]) {
+				lfs_tmp_imap[i] = (uint32_t)(addr + lfs_tmp_imap[i]);
+				lfs_imap_dirty[i] = false;
+			}
+		}
+		lfs_inode_buf_sz = 0;
+	}
+	// Write back imap
+	memmove(imap, lfs_tmp_imap, sizeof(lfs_tmp_imap));
+	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
+	flush_block(imap);
+}
+```
+
+In `fs/fs.c`, I also changed all the references to data blocks to function calls to `lfs_data_get_for_read()`. 
+
+I also wrapped some calls to `flush_block()` to avoid flushing anything in the buffer.
+
+```c
+if ((uint32_t) addr > DISKMAP) {
+    flush_block((void *) addr);
+}
+```
 

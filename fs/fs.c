@@ -43,20 +43,6 @@ free_block(uint32_t blockno)
 		panic("attempt to free zero block");
 }
 
-// Search the bitmap for a free block and allocate it.  When you
-// allocate a block, immediately flush the changed bitmap block
-// to disk.
-//
-// Return block number allocated on success,
-// -E_NO_DISK if we are out of blocks.
-//
-// Hint: use free_block as an example for manipulating the bitmap.
-int
-alloc_block(void)
-{
-	return super->s_cur_blk++;
-}
-
 // Validate the file system bitmap.
 //
 // Check that all reserved blocks -- 0, 1, and the bitmap blocks themselves --
@@ -136,6 +122,30 @@ lfs_free_inode(uint32_t inode_num)
 }
 
 // --------------------------------------------------------------
+// LFS data buffer
+// --------------------------------------------------------------
+
+const void *
+lfs_data_get_for_read(uint32_t blockno)
+{
+	assert(blockno > 0);
+	if (blockno >= super->s_cur_blk) {
+		memset(lfs_data_buf[blockno - super->s_cur_blk], 0x00, BLKSIZE);
+		return (const void *) lfs_data_buf[blockno - super->s_cur_blk];
+	} else {
+		return (const void *) diskaddr(blockno);
+	}
+}
+
+uint32_t
+lfs_alloc_data(void)
+{
+	uint32_t blockno = super->s_cur_blk + lfs_data_buf_sz;
+	lfs_data_buf_sz++;
+	return blockno;
+}
+
+// --------------------------------------------------------------
 // File system structures
 // --------------------------------------------------------------
 
@@ -197,15 +207,16 @@ file_block_walk(uint32_t inode_num, uint32_t filebno, uint32_t **ppdiskbno, bool
 		if (!f->f_indirect) {
 			if (alloc) {
 				fw = lfs_imap_get_for_write(inode_num);			
-				if ((r = alloc_block()) < 0) {
+				if ((r = lfs_alloc_data()) < 0) {
 					return r;
 				}
 				fw->f_indirect = r;
+				f = lfs_imap_get_for_read(inode_num);
 			} else {
 				return -E_NOT_FOUND;
 			}
 		}
-		*ppdiskbno = ((uint32_t *) diskaddr(f->f_indirect)) + (filebno - NDIRECT);
+		*ppdiskbno = ((uint32_t *) lfs_data_get_for_read(f->f_indirect)) + (filebno - NDIRECT);
 	} else { // filebno >= NDIRECT + NINDIRECT
 		return -E_INVAL;
 	}
@@ -230,12 +241,12 @@ file_get_block(uint32_t inode_num, uint32_t filebno, char **blk)
 		return r;
 	}
 	if (!(*ppdiskbno)) {
-		if ((r = alloc_block()) < 0) {
+		if ((r = lfs_alloc_data()) < 0) {
 			return r;
 		}
 		*ppdiskbno = r;
 	}
-	*blk = diskaddr(*ppdiskbno);
+	*blk = (char *) lfs_data_get_for_read(*ppdiskbno);
 	return 0;
 }
 
@@ -552,6 +563,7 @@ file_flush(uint32_t inode_num)
 {
 	int i;
 	uint32_t *pdiskbno;
+	const void *addr;
 	const struct File *f;
 
 	f = lfs_imap_get_for_read(inode_num);
@@ -560,13 +572,20 @@ file_flush(uint32_t inode_num)
 		if (file_block_walk(inode_num, i, &pdiskbno, 0) < 0 ||
 		    pdiskbno == NULL || *pdiskbno == 0)
 			continue;
-		flush_block(diskaddr(*pdiskbno));
+		addr = lfs_data_get_for_read(*pdiskbno);
+		if ((uint32_t) addr > DISKMAP) {
+			flush_block((void *) addr);
+		}
 	}
 	if ((uint32_t) f > DISKMAP) {
 		flush_block((void *) f);
 	}
-	if (f->f_indirect)
-		flush_block(diskaddr(f->f_indirect));
+	if (f->f_indirect) {
+		addr = lfs_data_get_for_read(f->f_indirect);
+		if ((uint32_t) addr > DISKMAP) {
+			flush_block((void *) addr);
+		}
+	}
 }
 
 
@@ -583,6 +602,7 @@ void
 lfs_sync_from_disk(void)
 {
 	lfs_inode_buf_sz = 0;
+	lfs_data_buf_sz = 0;
 	memmove(lfs_tmp_imap, imap, sizeof(lfs_tmp_imap));
 	memset(lfs_imap_dirty, 0, sizeof(lfs_imap_dirty));
 }
@@ -590,6 +610,16 @@ lfs_sync_from_disk(void)
 void
 lfs_sync_to_disk(void)
 {
+	// Write back data
+	if (lfs_data_buf_sz) {
+		char *addr = diskaddr(super->s_cur_blk);
+		super->s_cur_blk += lfs_data_buf_sz;
+		memmove(addr, lfs_data_buf, BLKSIZE * lfs_data_buf_sz);
+		for (uint32_t i = 0; i < lfs_data_buf_sz; ++i) {
+			flush_block(addr + (i * BLKSIZE));
+		}
+		lfs_data_buf_sz = 0;
+	}
 	// Write back inode
 	if (lfs_inode_buf_sz) {
 		struct File *addr = diskaddr(super->s_cur_blk++);

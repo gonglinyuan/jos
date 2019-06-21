@@ -15,8 +15,9 @@ fs_test(void)
 
 	uint32_t last_cur_blk = super->s_cur_blk;
 	// allocate block
-	if ((r = alloc_block()) < 0)
+	if ((r = lfs_alloc_data()) < 0)
 		panic("alloc_block: %e", r);
+	lfs_sync_to_disk();
 	// check that block was free
 	assert(r >= last_cur_blk);
 	// and is not free any more
@@ -40,6 +41,9 @@ fs_test(void)
 
 	*(volatile char*)blk = *(volatile char*)blk;
 	assert((uvpt[PGNUM(blk)] & PTE_D));
+	lfs_sync_to_disk();
+	r = file_get_block(inode_num_file, 0, &blk);
+	*(volatile char*)blk = *(volatile char*)blk;
 	file_flush(inode_num_file);
 	assert(!(uvpt[PGNUM(blk)] & PTE_D));
 	cprintf("file_flush is good\n");
@@ -59,6 +63,9 @@ fs_test(void)
 		panic("file_get_block 2: %e", r);
 	strcpy(blk, msg);
 	assert((uvpt[PGNUM(blk)] & PTE_D));
+	lfs_sync_to_disk();
+	r = file_get_block(inode_num_file, 0, &blk);
+	*(volatile char*)blk = *(volatile char*)blk;
 	file_flush(inode_num_file);
 	assert(!(uvpt[PGNUM(blk)] & PTE_D));
 	assert(!(uvpt[PGNUM(f)] & PTE_D));
