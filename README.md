@@ -419,10 +419,30 @@ int sys_receive_frame(void *data, uint32_t len);
 
 **Exercise 8.** *Implement `net/output.c`.*
 
+In `ns/ns.h`, I defined `NS_IPC_PAGE_ADDR`:
+
+```C
+#define NS_IPC_PAGE_ADDR 0xc0000000
+```
+
 In `output()` of `net/output.c`, I added:
 
 ```c
+void *in_page = (void *) NS_IPC_PAGE_ADDR;
+while (true) {
+    sys_ipc_recv(in_page);
+    struct jif_pkt *ppkt = (struct jif_pkt *) in_page;
+    if (thisenv->env_ipc_value != NSREQ_OUTPUT)
+        continue;
+    if ((thisenv->env_ipc_perm & (PTE_P | PTE_U)) != (PTE_P | PTE_U))
+        continue;
 
+    // Try to send a frame. Only retry once.
+    if (sys_send_frame(ppkt->jp_data, ppkt->jp_len)) {
+        sys_yield();
+        sys_send_frame(ppkt->jp_data, ppkt->jp_len);
+    }
+}
 ```
 
 

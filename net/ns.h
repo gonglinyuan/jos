@@ -4,6 +4,7 @@
 #define IP "10.0.2.15"
 #define MASK "255.255.255.0"
 #define DEFAULT "10.0.2.2"
+#define NS_IPC_PAGE_ADDR 0xc0000000
 
 #define TIMER_INTERVAL 250
 
