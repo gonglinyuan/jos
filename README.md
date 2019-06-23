@@ -1,4 +1,4 @@
-# Lab 5
+# Lab 6
 
 龚林源 1600012714
 
@@ -12,14 +12,37 @@
 - **C Compiler:** gcc version 5.4.0 20160609 (Ubuntu 5.4.0-6ubuntu1~16.04.10)
 - **QEMU:** https://github.com/mit-pdos/6.828-qemu.git
 
-**Exercise 1.** *`i386_init` identifies the file system environment by passing the type `ENV_TYPE_FS` to your environment creation function, `env_create`. Modify `env_create` in `env.c`, so that it gives the file system environment I/O privilege, but never gives that privilege to any other environment.*
+**Exercise 1.** *Add a call to `time_tick` for every clock interrupt in `kern/trap.c`. Implement `sys_time_msec` and add it to `syscall` in `kern/syscall.c` so that user space has access to the time.*
 
-In `env_create()` of `env.c`, I changed `e->env_type = ENV_TYPE_USER` to `e->env_type = type`, and added following to set `IOPL` to `3`:
+In `kern/trap.c`, I modified how the kernel handles `IRQ_OFFSET + IRQ_TIMER`:
 
 ```c
-if (type == ENV_TYPE_FS) {
-    e->env_tf.tf_eflags |= FL_IOPL_3;
+lapic_eoi();
+
+// Add time tick increment to clock interrupts.
+// Be careful! In multiprocessors, clock interrupts are
+// triggered on every CPU.
+// LAB 6: Your code here.
+if (cpunum() == 0) {
+    time_tick();
 }
+
+sched_yield();
+return;
+```
+
+In `kern/syscall.c`, I implemented `sys_time_msec()`:
+
+```c
+// LAB 6: Your code here.
+return time_msec();
+```
+
+I also modified `syscall()` to dispatch the system call:
+
+```c
+case SYS_time_msec:
+	return sys_time_msec();
 ```
 
 **Question 1.** *Do you have to do anything else to ensure that this I/O privilege setting is saved and restored properly when you subsequently switch from one environment to another? Why?*
