@@ -122,3 +122,15 @@ sys_time_msec(void)
 {
 	return (unsigned int) syscall(SYS_time_msec, 0, 0, 0, 0, 0, 0);
 }
+
+int
+sys_send_frame(const void *data, uint32_t len)
+{
+	return syscall(SYS_send_frame, 0, (uint32_t) data, len, 0, 0, 0);
+}
+
+int
+sys_receive_frame(void *data, uint32_t len)
+{
+	return syscall(SYS_receive_frame, 0, (uint32_t) data, (uint32_t) len, 0, 0, 0);
+}

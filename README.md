@@ -443,6 +443,39 @@ case SYS_receive_frame:
 	return sys_receive_frame((void *) a1, (uint32_t) a2);
 ```
 
+In `lib/syscall.c`, I added:
+
+```c
+int
+sys_send_frame(const void *data, uint32_t len)
+{
+	return syscall(SYS_send_frame, 0, (uint32_t) data, len, 0, 0, 0);
+}
+
+int
+sys_receive_frame(void *data, uint32_t len)
+{
+	return syscall(SYS_receive_frame, 0, (uint32_t) data, (uint32_t) len, 0, 0, 0);
+}
+```
+
+In `inc/lib.h`, I added:
+
+```c
+int sys_send_frame(const void *data, uint32_t len);
+int sys_receive_frame(void *data, uint32_t len);
+```
+
+**Exercise 8.** *Implement `net/output.c`.*
+
+In `output()` of `net/output.c`, I added:
+
+```c
+
+```
+
+
+
 **Question 1.** *Do you have to do anything else to ensure that this I/O privilege setting is saved and restored properly when you subsequently switch from one environment to another? Why?*
 
 No. Because `IOPL` is in `EFLAGS`, which will be properly saved and restored every time we switch from one environment to another. When an interrupt happens, the hardware will automatically save `EFLAGS` in the kernel stack; in `env_pop_tf()`, the `iret` instruction will restore the previously saved `EFLAGS`. 
