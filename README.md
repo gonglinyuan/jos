@@ -211,7 +211,7 @@ mme1000 = (uint8_t *) mmio_map_region(f->reg_base[0], f->reg_size[0]);
 
 **Exercise 5.** *Perform the initialization steps described in section 14.5 (but not its subsections). Use section 13 as a reference for the registers the initialization process refers to and sections 3.3.3 and 3.4 for reference to the transmit descriptors and transmit descriptor array.*
 
-I added two functions to `kern/e1000.c`:
+I added `enable_transmit()` to `kern/e1000.c`:
 
 ```c
 static void enable_transmit(void)
@@ -258,59 +258,17 @@ static void enable_transmit(void)
     tctl = (tctl & ~E1000_MM_TCTL_COLD) | (0x40 << 12);
     GET4B(mme1000, E1000_MM_TCTL) = tctl;
 }
-
-static void enable_receive(void)
-{
-    /* Allocate memory for tx descriptors. */
-    assert(E1000_CONF_RX_RDNUM * sizeof(struct tx_desc) <= PGSIZE);
-    struct PageInfo *pp_rx_des;
-    int ret_val;
-    pp_rx_des = page_alloc(ALLOC_ZERO);
-	if (!pp_rx_des)
-		panic("enable_receive: failed to allocate memory for rx descriptors!");
-    prx_desc = (struct rx_desc *) page2kva(pp_rx_des);
-
-    /* Allocate memory for buffers, and link them to descriptors. */
-    for (int rdnum = 0; rdnum < E1000_CONF_RX_RDNUM; rdnum += E1000_CONF_RX_BUF_PER_PAGE) {
-        struct PageInfo *pp_buf;
-        pp_buf = page_alloc(ALLOC_ZERO);
-        
-        if (!pp_buf)
-            panic("enable_receive: failed to allocate memory for buffers!");
-        physaddr_t phyaddr = page2pa(pp_buf);
-        for (int i = 0; i < E1000_CONF_RX_BUF_PER_PAGE; ++i) {
-            prx_desc[rdnum + i].addr = phyaddr + i * E1000_CONF_RX_BUFSIZE;
-            rxbuf_addr[rdnum + i] = phyaddr + i * E1000_CONF_RX_BUFSIZE;
-        }
-    }
-
-    /* Receiving initialization. */
-    GET4B(mme1000, E1000_MM_RAL) = E1000_CONF_RX_RAL_VAL;
-    GET4B(mme1000, E1000_MM_RAH) = E1000_CONF_RX_RAH_VAL | E1000_MM_RAH_AV;
-    for (int i = 0; i < E1000_MM_MTA_LEN; i += 4)
-        GET4B(mme1000, E1000_MM_MTA_ADDR + i) = 0;
-    GET4B(mme1000, E1000_MM_IMS) = 0;
-    GET4B(mme1000, E1000_MM_RDBAL) = page2pa(pp_rx_des);
-    GET4B(mme1000, E1000_MM_RDBAH) = 0;
-    GET4B(mme1000, E1000_MM_RDLEN) = E1000_CONF_RX_RDLEN;
-    GET4B(mme1000, E1000_MM_RDH) = 0;
-    GET4B(mme1000, E1000_MM_RDT) = E1000_CONF_RX_RDNUM - 1;
-    GET4B(mme1000, E1000_MM_RCTL) = E1000_MM_RCTL_EN | E1000_MM_RCTL_BAM
-                                    | E1000_MM_RCTL_SECRC;
-}
 ```
 
-I also call these functions in `e1000_func_enable()` of `kern/e1000.c`:
+I also call this function in `e1000_func_enable()` of `kern/e1000.c`:
 
 ```c
-/* Enable transmit and receive function. */
 enable_transmit();
-enable_receive();
 ```
 
 **Exercise 6.** *Write a function to transmit a packet by checking that the next descriptor is free, copying the packet data into the next descriptor, and updating TDT. Make sure you handle the transmit queue being full.*
 
-In `kern/e1000.c`, I added two functions:
+In `kern/e1000.c`, I added:
 
 ```c
 int e1000_transmit(const void *data, uint32_t len)
@@ -337,37 +295,19 @@ int e1000_transmit(const void *data, uint32_t len)
 
     return 0;
 }
-
-int e1000_receive(void *data, uint32_t len)
-{
-    int rdh = GET4B(mme1000, E1000_MM_RDH);
-    int rdt = GET4B(mme1000, E1000_MM_RDT);
-    int try = (rdt + 1) % E1000_CONF_RX_RDNUM;
-    if (prx_desc[try].status & E1000_MM_RXD_STAT_DD) {
-        uint32_t recv_len;
-        recv_len = prx_desc[try].length;
-        len = len < recv_len ? len : recv_len;
-        memmove(data, KADDR(rxbuf_addr[try]), len);
-        GET4B(mme1000, E1000_MM_RDT) = try;
-        return len;
-    }
-
-    return -E_RX_NO_PKT;
-}
 ```
 
-I also added the signature of these two functions to `kern/e1000.h`.
+I also added the signature of this function to `kern/e1000.h`.
 
 **Exercise 7.** *Add a system call that lets you transmit packets from user space.*
 
-In `inc/syscall.h`, I allocated system call number to our new system calls:
+In `inc/syscall.h`, I allocated system call number to our new system call:
 
 ```c
 SYS_send_frame,
-SYS_receive_frame,
 ```
 
-In `kern/syscall.c`, I implemented these two functions:
+In `kern/syscall.c`, I implemented `sys_send_frame()`:
 
 ```c
 static int
@@ -376,13 +316,6 @@ sys_send_frame(const void *data, uint32_t len)
 	user_mem_assert(curenv, data, len, PTE_P | PTE_U);
 	return e1000_transmit(data, len);
 }
-
-static int
-sys_receive_frame(void *data, uint32_t len)
-{
-	user_mem_assert(curenv, data, len, PTE_P | PTE_U | PTE_W);
-	return e1000_receive(data, len);
-}
 ```
 
 In `syscall()` of `kern/syscall.c`, I added two entries to dispatch these two system calls:
@@ -390,8 +323,6 @@ In `syscall()` of `kern/syscall.c`, I added two entries to dispatch these two sy
 ```c
 case SYS_send_frame:
 	return sys_send_frame((const void *) a1, (uint32_t) a2);
-case SYS_receive_frame:
-	return sys_receive_frame((void *) a1, (uint32_t) a2);
 ```
 
 In `lib/syscall.c`, I added:
@@ -402,19 +333,12 @@ sys_send_frame(const void *data, uint32_t len)
 {
 	return syscall(SYS_send_frame, 0, (uint32_t) data, len, 0, 0, 0);
 }
-
-int
-sys_receive_frame(void *data, uint32_t len)
-{
-	return syscall(SYS_receive_frame, 0, (uint32_t) data, (uint32_t) len, 0, 0, 0);
-}
 ```
 
 In `inc/lib.h`, I added:
 
 ```c
 int sys_send_frame(const void *data, uint32_t len);
-int sys_receive_frame(void *data, uint32_t len);
 ```
 
 **Exercise 8.** *Implement `net/output.c`.*
@@ -460,6 +384,131 @@ if (sys_send_frame(ppkt->jp_data, ppkt->jp_len)) {
 ```
 
 If the transmit ring is full, the user program should retry exactly once. This guarantees that we do not drop packets too often, and we do not keep the packet for too long time such that may cause the connection RTT to blow up.
+
+**Exercise 9.** *Read section 3.2. You can ignore anything about interrupts and checksum offloading (you can return to these sections if you decide to use these features later), and you don't have to be concerned with the details of thresholds and how the card's internal caches work.*
+
+**Exercise 10.** *Set up the receive queue and configure the E1000 by following the process in section 14.4. You don't have to support "long packets" or multicast. For now, don't configure the card to use interrupts; you can change that later if you decide to use receive interrupts. Also, configure the E1000 to strip the Ethernet CRC, since the grade script expects it to be stripped.*
+
+I added `enable_receive()` to `kern/e1000.c`:
+
+```c
+static void enable_receive(void)
+{
+    /* Allocate memory for tx descriptors. */
+    assert(E1000_CONF_RX_RDNUM * sizeof(struct tx_desc) <= PGSIZE);
+    struct PageInfo *pp_rx_des;
+    int ret_val;
+    pp_rx_des = page_alloc(ALLOC_ZERO);
+	if (!pp_rx_des)
+		panic("enable_receive: failed to allocate memory for rx descriptors!");
+    prx_desc = (struct rx_desc *) page2kva(pp_rx_des);
+
+    /* Allocate memory for buffers, and link them to descriptors. */
+    for (int rdnum = 0; rdnum < E1000_CONF_RX_RDNUM; rdnum += E1000_CONF_RX_BUF_PER_PAGE) {
+        struct PageInfo *pp_buf;
+        pp_buf = page_alloc(ALLOC_ZERO);
+        
+        if (!pp_buf)
+            panic("enable_receive: failed to allocate memory for buffers!");
+        physaddr_t phyaddr = page2pa(pp_buf);
+        for (int i = 0; i < E1000_CONF_RX_BUF_PER_PAGE; ++i) {
+            prx_desc[rdnum + i].addr = phyaddr + i * E1000_CONF_RX_BUFSIZE;
+            rxbuf_addr[rdnum + i] = phyaddr + i * E1000_CONF_RX_BUFSIZE;
+        }
+    }
+
+    /* Receiving initialization. */
+    GET4B(mme1000, E1000_MM_RAL) = E1000_CONF_RX_RAL_VAL;
+    GET4B(mme1000, E1000_MM_RAH) = E1000_CONF_RX_RAH_VAL | E1000_MM_RAH_AV;
+    for (int i = 0; i < E1000_MM_MTA_LEN; i += 4)
+        GET4B(mme1000, E1000_MM_MTA_ADDR + i) = 0;
+    GET4B(mme1000, E1000_MM_IMS) = 0;
+    GET4B(mme1000, E1000_MM_RDBAL) = page2pa(pp_rx_des);
+    GET4B(mme1000, E1000_MM_RDBAH) = 0;
+    GET4B(mme1000, E1000_MM_RDLEN) = E1000_CONF_RX_RDLEN;
+    GET4B(mme1000, E1000_MM_RDH) = 0;
+    GET4B(mme1000, E1000_MM_RDT) = E1000_CONF_RX_RDNUM - 1;
+    GET4B(mme1000, E1000_MM_RCTL) = E1000_MM_RCTL_EN | E1000_MM_RCTL_BAM
+                                    | E1000_MM_RCTL_SECRC;
+}
+```
+
+In `e1000_func_enable` of `kern/e1000.c`, I added:
+
+```c
+enable_receive();
+```
+
+**Exercise 11.** *Write a function to receive a packet from the E1000 and expose it to user space by adding a system call.*
+
+In `kern/e1000.c`, I added:
+
+```c
+int e1000_receive(void *data, uint32_t len)
+{
+    int rdh = GET4B(mme1000, E1000_MM_RDH);
+    int rdt = GET4B(mme1000, E1000_MM_RDT);
+    int try = (rdt + 1) % E1000_CONF_RX_RDNUM;
+    if (prx_desc[try].status & E1000_MM_RXD_STAT_DD) {
+        uint32_t recv_len;
+        recv_len = prx_desc[try].length;
+        len = len < recv_len ? len : recv_len;
+        memmove(data, KADDR(rxbuf_addr[try]), len);
+        GET4B(mme1000, E1000_MM_RDT) = try;
+        return len;
+    }
+
+    return -E_RX_NO_PKT;
+}
+```
+
+I also added the function signature in `kern/e1000.h`:
+
+```c
+int e1000_receive(void *data, uint32_t len);
+```
+
+In `inc/syscall.h`, I added:
+
+```c
+SYS_receive_frame,
+```
+
+In `kern/syscall.c`, I added:
+
+```c
+static int
+sys_receive_frame(void *data, uint32_t len)
+{
+	user_mem_assert(curenv, data, len, PTE_P | PTE_U | PTE_W);
+	return e1000_receive(data, len);
+}
+```
+
+In `syscall()` of `kern/syscall.c`, I added:
+
+```c
+case SYS_receive_frame:
+	return sys_receive_frame((void *) a1, (uint32_t) a2);
+```
+
+In `lib/syscall.c`, I added:
+
+```c
+int
+sys_receive_frame(void *data, uint32_t len)
+{
+	return syscall(SYS_receive_frame, 0, (uint32_t) data, (uint32_t) len, 0, 0, 0);
+}
+```
+
+In `inc/lib.h`, I added:
+
+```c
+int sys_receive_frame(void *data, uint32_t len);
+```
+
+
 
 **Exercise 2.** *Browse Intel's [Software Developer's Manual](https://pdos.csail.mit.edu/6.828/2018/readings/hardware/8254x_GBe_SDM.pdf) for the E1000. This manual covers several closely related Ethernet controllers. QEMU emulates the 82540EM.*
 
