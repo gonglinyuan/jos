@@ -508,6 +508,30 @@ In `inc/lib.h`, I added:
 int sys_receive_frame(void *data, uint32_t len);
 ```
 
+**Exercise 12.** *Implement `net/input.c`.*
+
+In `input()` of `net/input.c`, I added:
+
+```c
+while (true) {
+    void *new_page = (void *) NS_IPC_PAGE_ADDR;
+    while (sys_page_alloc(0, new_page, PTE_U | PTE_W | PTE_P)) {
+        cprintf("failed to alloc page, try again ...\n");
+        sys_yield();
+    }
+    struct jif_pkt *pjif = (struct jif_pkt *) new_page;
+    int32_t recv_len;
+    while ((recv_len = sys_receive_frame(pjif->jp_data, 2048)) < 0) {
+        if (recv_len != -E_RX_NO_PKT)
+            cprintf("error occured when receiving frame\n");
+        sys_yield();
+    }
+    pjif->jp_len = recv_len;
+    ipc_send(ns_envid, NSREQ_INPUT, new_page, PTE_U | PTE_W | PTE_P);
+    sys_page_unmap(0, new_page);
+}
+```
+
 
 
 **Exercise 2.** *Browse Intel's [Software Developer's Manual](https://pdos.csail.mit.edu/6.828/2018/readings/hardware/8254x_GBe_SDM.pdf) for the E1000. This manual covers several closely related Ethernet controllers. QEMU emulates the 82540EM.*
