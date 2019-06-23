@@ -76,8 +76,15 @@ send_header(struct http_request *req, int code)
 static int
 send_data(struct http_request *req, int fd)
 {
-	// LAB 6: Your code here.
-	panic("send_data not implemented");
+	char buf[256];
+	int r;
+	while ((r = read(fd, buf, 256)) > 0) {
+		if (write(req->sock, buf, r) != r)
+			return -1;
+	}
+	if (r != 0)
+		return -1;
+	return 0;
 }
 
 static int
@@ -223,7 +230,17 @@ send_file(struct http_request *req)
 	// set file_size to the size of the file
 
 	// LAB 6: Your code here.
-	panic("send_file not implemented");
+	struct Stat statbuf;
+	if (stat(req->url, &statbuf) < 0) {
+		send_error(req, 404);
+		return -1;
+	}
+	if (statbuf.st_isdir) {
+		send_error(req, 404);
+		return -1;
+	}
+	file_size = statbuf.st_size;
+	fd = open(req->url, O_RDONLY);
 
 	if ((r = send_header(req, 200)) < 0)
 		goto end;

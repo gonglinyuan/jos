@@ -532,274 +532,53 @@ while (true) {
 }
 ```
 
+**Question 2.** *How did you structure your receive implementation? In particular, what do you do if the receive queue is empty and a user environment requests the next incoming packet?*
 
+The user program first calls library function `sys_receive_frame()`. This library function invokes a syscall `SYS_receive_frame`, and trap into the kernel. The kernel checks the arguments, and calls `e1000_receive()` in the driver.
 
-**Exercise 2.** *Browse Intel's [Software Developer's Manual](https://pdos.csail.mit.edu/6.828/2018/readings/hardware/8254x_GBe_SDM.pdf) for the E1000. This manual covers several closely related Ethernet controllers. QEMU emulates the 82540EM.*
-
-*The `flush_block` function should write a block out to disk if necessary. `flush_block` shouldn't do anything if the block isn't even in the block cache (that is, the page isn't mapped) or if it's not dirty. After writing the block to disk, `flush_block` should clear the `PTE_D` bit using `sys_page_map`.*
-
-In `bc_pgfault()` of `bc.c`, I added:
+Look at the code in `ns/input.c`:
 
 ```c
-addr = ROUNDDOWN(addr, PGSIZE);
-if ((r = sys_page_alloc(0, addr, PTE_U | PTE_W)) < 0) {
-	panic("in bc_pgfault, sys_page_alloc: %e", r);
-}
-if ((r = ide_read(blockno * BLKSECTS, addr, BLKSECTS)) < 0) {
-	panic("in bc_pgfault, ide_read returns %d", r);
+while ((recv_len = sys_receive_frame(pjif->jp_data, 2048)) < 0) {
+    if (recv_len != -E_RX_NO_PKT)
+        cprintf("error occured when receiving frame\n");
+    sys_yield();
 }
 ```
 
-In `flush_block()` of `bc.c`, I added:
+If the receive queue is empty, the user program should retry until sucessfully received something. Note that if `-E_RX_NO_PKT` is returned from `sys_receive_frame()`, there must be an error occurred when receiving the frame.
+
+**Exercise 13.** *The web server is missing the code that deals with sending the contents of a file back to the client. Finish the web server by implementing `send_file` and `send_data`.*
+
+I implemented `send_data()` in `user/httpd.c`:
 
 ```c
+char buf[256];
 int r;
-addr = ROUNDDOWN(addr, BLKSIZE);
-if (!(va_is_mapped(addr) && va_is_dirty(addr))) {
-    return;
+while ((r = read(fd, buf, 256)) > 0) {
+    if (write(req->sock, buf, r) != r)
+        return -1;
 }
-if ((r = ide_write(blockno * BLKSECTS, addr, BLKSECTS)) < 0) {
-    panic("in bc_pgfault, ide_write returns %d", r);
-}
-// Remap to clear PTE_D
-if ((r = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL)) < 0) {
-    panic("in bc_pgfault, sys_page_map: %e", r);
-}
-```
-
-**Exercise 3.** *Use `free_block` as a model to implement `alloc_block` in `fs/fs.c`, which should find a free disk block in the bitmap, mark it used, and return the number of that block. When you allocate a block, you should immediately flush the changed bitmap block to disk with `flush_block`, to help file system consistency.*
-
-In `alloc_block()` of `fs.c`, I added:
-
-```c
-uint32_t blockno = 0;
-while ((blockno < super->s_nblocks) && !bitmap[blockno / 32]) {
-    blockno += 32;
-}
-while ((blockno < super->s_nblocks) && !(bitmap[blockno / 32] & (1 << (blockno % 32)))) {
-    blockno += 1;
-}
-if (blockno >= super->s_nblocks) {
-    return -E_NO_DISK;
-}
-bitmap[blockno / 32] &= ~(1 << (blockno % 32));
-flush_block(&bitmap[blockno / 32]);
-return blockno;
-```
-
-**Exercise 4.** *Implement `file_block_walk` and `file_get_block`. `file_block_walk` maps from a block offset within a file to the pointer for that block in the `struct File` or the indirect block, very much like what `pgdir_walk` did for page tables. `file_get_block` goes one step further and maps to the actual disk block, allocating a new one if necessary.*
-
-In `file_block_walk()` of `fs.c`, I added:
-
-```c
-int r;
-if (filebno < NDIRECT) {
-    *ppdiskbno = f->f_direct + filebno;
-} else if (filebno < NDIRECT + NINDIRECT) {
-    if (!f->f_indirect) {
-        if (alloc) {
-            if ((r = alloc_block()) < 0) {
-                return r;
-            }
-            f->f_indirect = r;
-        } else {
-            return -E_NOT_FOUND;
-        }
-    }
-    *ppdiskbno = ((uint32_t *) diskaddr(f->f_indirect)) + (filebno - NDIRECT);
-} else { // filebno >= NDIRECT + NINDIRECT
-    return -E_INVAL;
-}
+if (r != 0)
+    return -1;
 return 0;
 ```
 
-In `file_get_block()` of `fs.c`, I added:
+I implemented `send_file()` in `user/httpd.c`:
 
 ```c
-int r;
-uint32_t *ppdiskbno;
-if ((r = file_block_walk(f, filebno, &ppdiskbno, true)) < 0) {
-    return r;
+struct Stat statbuf;
+if (stat(req->url, &statbuf) < 0) {
+    send_error(req, 404);
+    return -1;
 }
-if (!(*ppdiskbno)) {
-    if ((r = alloc_block()) < 0) {
-        return r;
-    }
-    *ppdiskbno = r;
+if (statbuf.st_isdir) {
+    send_error(req, 404);
+    return -1;
 }
-*blk = diskaddr(*ppdiskbno);
-return 0;
+file_size = statbuf.st_size;
+fd = open(req->url, O_RDONLY);
 ```
-
-**Exercise 5.** *Implement `serve_read` in `fs/serv.c`.*
-
-In `serve_read()` of `fs.c`, I added:
-
-```c
-struct OpenFile *o;
-int r;
-if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0) {
-    return r;
-}
-if ((r = file_read(o->o_file, ret->ret_buf, MIN(req->req_n, sizeof(ret->ret_buf)), o->o_fd->fd_offset)) < 0) {
-    return r;
-}
-o->o_fd->fd_offset += r;
-return r;
-```
-
-I make sure that the number of bytes we read from the file is no more than the size of the provided buffer.
-
-**Exercise 6.** *Implement `serve_write` in `fs/serv.c` and `devfile_write` in `lib/file.c`.*
-
-In `serve_write()` of `fs.c`, I added:
-
-```c
-struct OpenFile *o;
-int r;
-if ((r = openfile_lookup(envid, req->req_fileid, &o)) < 0) {
-	return r;
-}
-if ((r = file_write(o->o_file, req->req_buf, MIN(req->req_n, sizeof(req->req_buf)), o->o_fd->fd_offset)) < 0) {
-	return r;
-}
-o->o_fd->fd_offset += r;
-return r;
-```
-
-In `devfile_write()` of `file.c`, I added:
-
-```c
-fsipcbuf.write.req_fileid = fd->fd_file.id;
-n = MIN(n, sizeof(fsipcbuf.write.req_buf));
-fsipcbuf.write.req_n = n;
-memmove(fsipcbuf.write.req_buf, buf, n);
-return fsipc(FSREQ_WRITE, NULL);
-```
-
-**Exercise 7.** *`spawn` relies on the new syscall `sys_env_set_trapframe` to initialize the state of the newly created environment. Implement `sys_env_set_trapframe` in `kern/syscall.c` (don't forget to dispatch the new system call in `syscall()`).*
-
-*Test your code by running the `user/spawnhello` program from `kern/init.c`, which will attempt to spawn `/hello` from the file system.*
-
-In `sys_env_set_trapframe()` of `syscall.c`, I added:
-
-```c
-struct Env *env_ptr;
-int r;
-if ((r = envid2env(envid, &env_ptr, true)) < 0) {
-    return r;
-}
-user_mem_assert(curenv, (const void *)tf, sizeof(struct Trapframe), 0);
-env_ptr->env_tf = *tf;
-// Set IOPL to 0
-env_ptr->env_tf.tf_eflags &= ~FL_IOPL_MASK;
-// Enable interrupts
-env_ptr->env_tf.tf_eflags |= FL_IF;
-// Set CPL to 3
-env_ptr->env_tf.tf_cs |= 0x3;
-return 0;
-```
-
-Then I tested it with `make run-spawnhello-nox`, and the output is:
-
-```
-vagrant@ubuntu-xenial:~/jos$ make run-spawnhello-nox
-make[1]: Entering directory '/home/vagrant/jos'
-make[1]: 'obj/fs/fs.img' is up to date.
-make[1]: Leaving directory '/home/vagrant/jos'
-qemu-system-i386 -nographic -drive file=obj/kern/kernel.img,index=0,media=disk,format=raw -serial mon:stdio -gdb tcp::26000 -D qemu.log -smp 1 -drive file=obj/fs/fs.img,index=1,media=disk,format=raw
-6828 decimal is 15254 octal!
-Physical memory: 131072K available, base = 640K, extended = 130432K
-check_page_free_list() succeeded!
-check_page_alloc() succeeded!
-check_page() succeeded!
-check_kern_pgdir() succeeded!
-check_page_free_list() succeeded!
-check_page_installed_pgdir() succeeded!
-SMP: CPU 0 found 1 CPU(s)
-enabled interrupts: 1 2 4
-i am parent environment 00001001
-FS is running
-FS can do I/O
-Device 1 presence: 1
-block cache is good
-superblock is good
-bitmap is good
-alloc_block is good
-file_open is good
-file_get_block is good
-file_flush is good
-file_truncate is good
-file rewrite is good
-hello, world
-i am environment 00001002
-No runnable environments in the system!
-Welcome to the JOS kernel monitor!
-Type 'help' for a list of commands.
-K> 
-```
-
-**Exercise 8.** *Change `duppage` in `lib/fork.c` to follow the new convention. If the page table entry has the `PTE_SHARE` bit set, just copy the mapping directly.*
-
-*Likewise, implement `copy_shared_pages` in `lib/spawn.c`. It should loop through all page table entries in the current process (just like `fork` did), copying any page mappings that have the`PTE_SHARE` bit set into the child process.*
-
-I changed `duppage()` in `fork.c` to be:
-
-```c
-uintptr_t addr = pn * PGSIZE;
-if (((uvpt[pn] & PTE_COW) || (uvpt[pn] & PTE_W)) && !(uvpt[pn] & PTE_SHARE)) {
-    r = sys_page_map(0, (void *) addr, envid, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
-    if (r < 0) return r;
-    r = sys_page_map(0, (void *) addr, 0, (void *) addr, ((uvpt[pn] & PTE_SYSCALL) & (~PTE_W)) | PTE_COW);
-    if (r < 0) return r;
-} else {
-    r = sys_page_map(0, (void *) addr, envid, (void *) addr, (uvpt[pn] & PTE_SYSCALL));
-    if (r < 0) return r;
-}
-return 0;
-```
-
-In `copy_shared_pages()` of `spawn.c`, I added:
-
-```c
-int r;
-for (uintptr_t addr = 0; addr < USTACKTOP; addr += PGSIZE) {
-    if ((uvpd[PDX(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_P) && (uvpt[PGNUM(addr)] & PTE_U) && (uvpt[PGNUM(addr)] & PTE_SHARE)) {
-        if ((r = sys_page_map(0, (void *) addr, child, (void *) addr, (uvpt[PGNUM(addr)] & PTE_SYSCALL))) < 0) {
-            return r;
-        }
-    }
-}
-```
-
-**Exercise 9.** *In your `kern/trap.c`, call `kbd_intr` to handle trap `IRQ_OFFSET+IRQ_KBD` and `serial_intr` to handle trap `IRQ_OFFSET+IRQ_SERIAL`.*
-
-In `trap_init()` of `trap.c`, I added:
-
-```c
-SETGATE(idt[IRQ_OFFSET + IRQ_KBD], 0, GD_KT, idt_entries[IRQ_OFFSET + IRQ_KBD], 0);
-SETGATE(idt[IRQ_OFFSET + IRQ_SERIAL], 0, GD_KT, idt_entries[IRQ_OFFSET + IRQ_SERIAL], 0);
-```
-
-In `trap_dispatch()` of `trap.c`, I added:
-
-```c
-if (tf->tf_trapno == IRQ_OFFSET + IRQ_KBD) {
-    kbd_intr();
-    return;
-}
-
-if (tf->tf_trapno == IRQ_OFFSET + IRQ_SERIAL) {
-    serial_intr();
-    return;
-}
-```
-
-**Exercise 10.** *Add I/O redirection for < to `user/sh.c`.*
-
-*Test your implementation by typing sh <script into your shell*
-
-*Run make run-testshell to test your shell.*
 
 
 
