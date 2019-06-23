@@ -18,3 +18,5 @@
 /.suf
 
 /__pycache__/
+
+/.vscode/
