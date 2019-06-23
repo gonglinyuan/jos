@@ -26,6 +26,12 @@ enum {
 	E_NOT_EXEC	,	// File not a valid executable
 	E_NOT_SUPP	,	// Operation not supported
 
+	// E1000 error codes
+	E_NO_TX_DESC,   // No free transmit descriptors
+	E_TX_TOO_LONG,  // Packet too long
+	E_RX_NO_PKT,    // No more packet to read
+
+
 	MAXERROR
 };
 
