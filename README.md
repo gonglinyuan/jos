@@ -580,7 +580,13 @@ file_size = statbuf.st_size;
 fd = open(req->url, O_RDONLY);
 ```
 
+**Question 3.** *What does the web page served by JOS's web server say?*
 
+The webpage has a title at the top center reads "This file came from JOS.", and a line "Cheesy web page!" is running from right to left.
+
+**Question 4.** *How long approximately did it take you to do this lab?*
+
+About 25 hours.
 
 **Grading.** This is the output of `make grade`:
 
@@ -590,7 +596,7 @@ make clean
 make[1]: Entering directory '/home/vagrant/jos'
 rm -rf obj .gdbinit jos.in qemu.log
 make[1]: Leaving directory '/home/vagrant/jos'
-./grade-lab4
+./grade-lab6
 make[1]: Entering directory '/home/vagrant/jos'
 + as kern/entry.S
 + cc kern/entrypgdir.c
@@ -614,6 +620,44 @@ make[1]: Entering directory '/home/vagrant/jos'
 + cc kern/mpconfig.c
 + cc kern/lapic.c
 + cc kern/spinlock.c
++ cc kern/e1000.c
++ cc kern/pci.c
++ cc kern/time.c
++ as[USER] lib/entry.S
++ cc[USER] net/lwip/api/api_lib.c
++ cc[USER] net/lwip/api/api_msg.c
++ cc[USER] net/lwip/api/err.c
++ cc[USER] net/lwip/api/sockets.c
++ cc[USER] net/lwip/api/tcpip.c
++ cc[USER] net/lwip/api/netbuf.c
++ cc[USER] net/lwip/core/init.c
++ cc[USER] net/lwip/core/tcp_in.c
++ cc[USER] net/lwip/core/dhcp.c
++ cc[USER] net/lwip/core/mem.c
++ cc[USER] net/lwip/core/memp.c
++ cc[USER] net/lwip/core/netif.c
++ cc[USER] net/lwip/core/pbuf.c
++ cc[USER] net/lwip/core/raw.c
++ cc[USER] net/lwip/core/stats.c
++ cc[USER] net/lwip/core/sys.c
++ cc[USER] net/lwip/core/tcp.c
++ cc[USER] net/lwip/core/ipv4/ip_addr.c
++ cc[USER] net/lwip/core/ipv4/icmp.c
++ cc[USER] net/lwip/core/ipv4/ip.c
++ cc[USER] net/lwip/core/ipv4/ip_frag.c
++ cc[USER] net/lwip/core/ipv4/inet_chksum.c
++ cc[USER] net/lwip/core/ipv4/inet.c
++ cc[USER] net/lwip/core/tcp_out.c
++ cc[USER] net/lwip/core/udp.c
++ cc[USER] net/lwip/netif/etharp.c
++ cc[USER] net/lwip/netif/loopif.c
++ cc[USER] net/lwip/jos/arch/sys_arch.c
++ cc[USER] net/lwip/jos/arch/thread.c
++ as[USER] net/lwip/jos/arch/longjmp.S
++ cc[USER] net/lwip/jos/arch/perror.c
++ cc[USER] net/lwip/jos/jif/jif.c
++ ar obj/lib/liblwip.a
+ar: creating obj/lib/liblwip.a
 + cc[USER] lib/console.c
 + cc[USER] lib/libmain.c
 + cc[USER] lib/exit.c
@@ -627,10 +671,20 @@ make[1]: Entering directory '/home/vagrant/jos'
 + as[USER] lib/pfentry.S
 + cc[USER] lib/fork.c
 + cc[USER] lib/ipc.c
++ cc[USER] lib/args.c
++ cc[USER] lib/fd.c
++ cc[USER] lib/file.c
++ cc[USER] lib/fprintf.c
++ cc[USER] lib/pageref.c
++ cc[USER] lib/spawn.c
++ cc[USER] lib/sockets.c
++ cc[USER] lib/nsipc.c
++ cc[USER] lib/malloc.c
++ cc[USER] lib/pipe.c
++ cc[USER] lib/wait.c
 + ar obj/lib/libjos.a
 ar: creating obj/lib/libjos.a
 + cc[USER] user/hello.c
-+ as[USER] lib/entry.S
 + ld obj/user/hello
 + cc[USER] user/buggyhello.c
 + ld obj/user/buggyhello
@@ -692,35 +746,94 @@ ar: creating obj/lib/libjos.a
 + ld obj/user/pingpongs
 + cc[USER] user/primes.c
 + ld obj/user/primes
++ cc[USER] user/faultio.c
++ ld obj/user/faultio
++ cc[USER] user/spawnfaultio.c
++ ld obj/user/spawnfaultio
++ cc[USER] user/testfile.c
++ ld obj/user/testfile
++ cc[USER] user/spawnhello.c
++ ld obj/user/spawnhello
++ cc[USER] user/icode.c
++ ld obj/user/icode
++ cc[USER] fs/ide.c
++ cc[USER] fs/bc.c
++ cc[USER] fs/fs.c
++ cc[USER] fs/serv.c
++ cc[USER] fs/test.c
++ ld obj/fs/fs
++ cc[USER] user/testtime.c
++ ld obj/user/testtime
++ cc[USER] user/httpd.c
++ ld obj/user/httpd
++ cc[USER] user/echosrv.c
++ ld obj/user/echosrv
++ cc[USER] user/echotest.c
++ ld obj/user/echotest
++ cc[USER] net/timer.c
++ cc[USER] net/input.c
++ cc[USER] net/output.c
++ cc[USER] net/testoutput.c
++ ld obj/net/testoutput
++ cc[USER] net/testinput.c
++ ld obj/net/testinput
++ cc[USER] net/serv.c
++ ld obj/net/ns
++ cc[USER] user/testpteshare.c
++ ld obj/user/testpteshare
++ cc[USER] user/testfdsharing.c
++ ld obj/user/testfdsharing
++ cc[USER] user/testpipe.c
++ ld obj/user/testpipe
++ cc[USER] user/testpiperace.c
++ ld obj/user/testpiperace
++ cc[USER] user/testpiperace2.c
++ ld obj/user/testpiperace2
++ cc[USER] user/primespipe.c
++ ld obj/user/primespipe
++ cc[USER] user/testkbd.c
++ ld obj/user/testkbd
++ cc[USER] user/testshell.c
++ ld obj/user/testshell
 + ld obj/kern/kernel
 + as boot/boot.S
 + cc -Os boot/main.c
 + ld boot/boot
 boot block is 414 bytes (max 510)
 + mk obj/kern/kernel.img
++ mk obj/fs/fsformat
++ cc[USER] user/init.c
++ ld obj/user/init
++ cc[USER] user/cat.c
++ ld obj/user/cat
++ cc[USER] user/echo.c
++ ld obj/user/echo
++ cc[USER] user/ls.c
++ ld obj/user/ls
++ cc[USER] user/lsfd.c
++ ld obj/user/lsfd
++ cc[USER] user/num.c
++ ld obj/user/num
++ cc[USER] user/sh.c
++ ld obj/user/sh
++ mk obj/fs/clean-fs.img
++ cp obj/fs/clean-fs.img obj/fs/fs.img
 make[1]: Leaving directory '/home/vagrant/jos'
-dumbfork: OK (1.5s)
-Part A score: 5/5
+testtime: OK (8.2s)
+pci attach: OK (1.5s)
+testoutput [5 packets]: OK (2.9s)
+testoutput [100 packets]: OK (2.7s)
+Part A score: 35/35
 
-faultread: OK (1.4s)
-faultwrite: OK (1.3s)
-faultdie: OK (1.4s)
-faultregs: OK (1.4s)
-faultalloc: OK (2.2s)
-faultallocbad: OK (1.3s)
-faultnostack: OK (2.1s)
-faultbadhandler: OK (2.3s)
-faultevilhandler: OK (2.3s)
-forktree: OK (2.4s)
-Part B score: 50/50
+testinput [5 packets]: OK (3.0s)
+testinput [100 packets]: OK (2.9s)
+tcp echo server [echosrv]: OK (1.8s)
+web server [httpd]:
+  http://localhost:26002/: OK (1.8s)
+  http://localhost:26002/index.html: OK (2.7s)
+  http://localhost:26002/random_file.txt: OK (2.7s)
+Part B score: 70/70
 
-spin: OK (2.2s)
-stresssched: OK (2.4s)
-sendpage: OK (2.2s)
-pingpong: OK (2.4s)
-primes: OK (6.5s)
-Part C score: 25/25
-
-Score: 100% (80/80)
+Score: 100% (105/105)
 ```
 
