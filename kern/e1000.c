@@ -55,16 +55,6 @@
 #define E1000_MM_RCTL_EN         0x00000002    /* enable */
 #define E1000_MM_RCTL_BAM        0x00008000    /* broadcast enable */
 #define E1000_MM_RCTL_SECRC      0x04000000    /* Strip Ethernet CRC */
-#define E1000_MM_RDTR            0x02820  /* RX Delay Timer - RW */
-#define E1000_MM_ICR             0x000C0  /* Interrupt Cause Read - R/clr */
-#define E1000_MM_ITR             0x000C4  /* Interrupt Throttling Rate - RW */
-#define E1000_MM_ICS             0x000C8  /* Interrupt Cause Set - WO */
-#define E1000_MM_IMS             0x000D0  /* Interrupt Mask Set - RW */
-#define E1000_MM_IMC             0x000D8  /* Interrupt Mask Clear - WO */
-#define E1000_MM_ICR_RXT0        0x00000080 /* rx timer intr (ring 0) */
-#define E1000_MM_IMS_RXT0        E1000_MM_ICR_RXT0      /* rx timer intr */
-#define E1000_MM_ICR_TXDW        0x00000001 /* Transmit desc written back */
-#define E1000_MM_IMS_TXDW        E1000_MM_ICR_TXDW      /* Transmit desc written back */
 
 
 
@@ -77,8 +67,6 @@ static volatile struct tx_desc *ptx_desc;   // pointer to tx descriptors
 static uintptr_t txbuf_addr[E1000_CONF_TX_TDNUM]; // physical addr of tx buf
 static volatile struct rx_desc *prx_desc;   // pointer to rx descriptors
 static uintptr_t rxbuf_addr[E1000_CONF_RX_RDNUM];
-
-static struct Env *pBlkTxEnv, *pBlkRxEnv;
 
 extern void pci_func_enable(struct pci_func *f);
 
@@ -94,16 +82,14 @@ static void enable_transmit(void)
     ptx_desc = (struct tx_desc *) page2kva(pp_tx_des);
 
     /* Allocate memory for buffers, and link them to descriptors. */
-    for (int tdnum = 0; tdnum < E1000_CONF_TX_TDNUM; tdnum += E1000_CONF_TX_BUF_PER_PAGE)
-    {
+    for (int tdnum = 0; tdnum < E1000_CONF_TX_TDNUM; tdnum += E1000_CONF_TX_BUF_PER_PAGE) {
         struct PageInfo *pp_buf;
         pp_buf = page_alloc(ALLOC_ZERO);
         
         if (!pp_buf)
             panic("enable_transmit: failed to allocate memory for buffers!");
         physaddr_t phyaddr = page2pa(pp_buf);
-        for (int i = 0; i < E1000_CONF_TX_BUF_PER_PAGE; ++i)
-        {
+        for (int i = 0; i < E1000_CONF_TX_BUF_PER_PAGE; ++i) {
             ptx_desc[tdnum + i].addr = phyaddr + i * E1000_CONF_TX_BUFSIZE;
             txbuf_addr[tdnum + i] = phyaddr + i * E1000_CONF_TX_BUFSIZE;
             ptx_desc[tdnum + i].length = E1000_CONF_TX_BUFSIZE;
@@ -111,11 +97,6 @@ static void enable_transmit(void)
             ptx_desc[tdnum + i].status |= E1000_MM_TXD_STAT_DD;
         }
     }
-
-    /* Transmit interrupt initialization. */
-    GET4B(mme1000, E1000_MM_IMS) = E1000_MM_IMS_TXDW;
-    if (GET4B(mme1000, E1000_MM_IMS) & E1000_MM_IMS_TXDW)
-        cprintf("TX interrupt mask set!\n");
 
     /* Transmit initialization. */
     GET4B(mme1000, E1000_MM_TDBAL) = page2pa(pp_tx_des);
@@ -146,26 +127,18 @@ static void enable_receive(void)
     prx_desc = (struct rx_desc *) page2kva(pp_rx_des);
 
     /* Allocate memory for buffers, and link them to descriptors. */
-    for (int rdnum = 0; rdnum < E1000_CONF_RX_RDNUM; rdnum += E1000_CONF_RX_BUF_PER_PAGE)
-    {
+    for (int rdnum = 0; rdnum < E1000_CONF_RX_RDNUM; rdnum += E1000_CONF_RX_BUF_PER_PAGE) {
         struct PageInfo *pp_buf;
         pp_buf = page_alloc(ALLOC_ZERO);
         
         if (!pp_buf)
             panic("enable_receive: failed to allocate memory for buffers!");
         physaddr_t phyaddr = page2pa(pp_buf);
-        for (int i = 0; i < E1000_CONF_RX_BUF_PER_PAGE; ++i)
-        {
+        for (int i = 0; i < E1000_CONF_RX_BUF_PER_PAGE; ++i) {
             prx_desc[rdnum + i].addr = phyaddr + i * E1000_CONF_RX_BUFSIZE;
             rxbuf_addr[rdnum + i] = phyaddr + i * E1000_CONF_RX_BUFSIZE;
         }
     }
-    
-    /* Receiving interrupt initialization. */
-    GET4B(mme1000, E1000_MM_RDTR) = 0;
-    GET4B(mme1000, E1000_MM_IMS) = E1000_MM_IMS_RXT0;
-    if (GET4B(mme1000, E1000_MM_IMS) & E1000_MM_IMS_RXT0)
-        cprintf("RX interrupt mask set!\n");
 
     /* Receiving initialization. */
     GET4B(mme1000, E1000_MM_RAL) = E1000_CONF_RX_RAL_VAL;
@@ -184,7 +157,6 @@ static void enable_receive(void)
 
 int e1000_transmit(const void *data, uint32_t len)
 {
-    struct Env *self;
     int tdh = GET4B(mme1000, E1000_MM_TDH);
     int tdt = GET4B(mme1000, E1000_MM_TDT);
 
@@ -192,10 +164,10 @@ int e1000_transmit(const void *data, uint32_t len)
         return -E_TX_TOO_LONG;
 
     if ((tdt + 1) % E1000_CONF_TX_TDNUM == tdh)
-        goto tx_pending;
+        return -E_NO_TX_DESC;
     
     if (!(ptx_desc[tdt].status & E1000_MM_TXD_STAT_DD))
-        goto tx_pending;
+        return -E_NO_TX_DESC;
     
     memmove(KADDR(txbuf_addr[tdt]), data, len);
     ptx_desc[tdt].addr = txbuf_addr[tdt];
@@ -206,17 +178,6 @@ int e1000_transmit(const void *data, uint32_t len)
     GET4B(mme1000, E1000_MM_TDT) = (tdt + 1) % E1000_CONF_TX_TDNUM;
 
     return 0;
-
-tx_pending:
-    if (envid2env(0, &self, 1) < 0)
-        panic("e1000_transmit: cannot get current Env's pointer");
-    self->env_tf.tf_regs.reg_eax = -E_NO_TX_DESC;
-    self->env_status = ENV_SLEEPING;
-    pBlkTxEnv = self;
-    sched_yield();
-
-    panic("e1000_transmit: should not reach here!");
-    return -E_NO_TX_DESC;
 }
 
 int e1000_receive(void *data, uint32_t len)
@@ -224,64 +185,24 @@ int e1000_receive(void *data, uint32_t len)
     int rdh = GET4B(mme1000, E1000_MM_RDH);
     int rdt = GET4B(mme1000, E1000_MM_RDT);
     int try = (rdt + 1) % E1000_CONF_RX_RDNUM;
-    if (prx_desc[try].status & E1000_MM_RXD_STAT_DD)
-    {
+    if (prx_desc[try].status & E1000_MM_RXD_STAT_DD) {
         uint32_t recv_len;
         recv_len = prx_desc[try].length;
         len = len < recv_len ? len : recv_len;
         memmove(data, KADDR(rxbuf_addr[try]), len);
         GET4B(mme1000, E1000_MM_RDT) = try;
-
-        if (GET4B(mme1000, E1000_MM_ICR) & E1000_MM_ICR_RXT0
-            & GET4B(mme1000, E1000_MM_IMS))
-            cprintf("See receive interrupt.\n");
-
         return len;
     }
 
-    struct Env *self;
-    if (envid2env(0, &self, 1) < 0)
-        panic("e1000_receive: cannot get current Env's pointer");
-    self->env_tf.tf_regs.reg_eax = -E_RX_NO_PKT;
-    self->env_status = ENV_SLEEPING;
-    pBlkRxEnv = self;
-    sched_yield();
-
-    panic("e1000_receive: should not reach here!");
     return -E_RX_NO_PKT;
-}
-
-int e1000_interrupt_handler()
-{
-    uint32_t intvec = GET4B(mme1000, E1000_MM_ICR);
-    if (pBlkRxEnv && (intvec & E1000_MM_ICR_RXT0))
-    {
-        cprintf("Handling RX interrupt!\n");
-        pBlkRxEnv->env_status = ENV_RUNNABLE;
-        pBlkRxEnv = NULL;
-    }
-
-    if (pBlkTxEnv && (intvec & E1000_MM_ICR_TXDW))
-    {
-        cprintf("Handling TX interrupt!\n");
-        pBlkTxEnv->env_status = ENV_RUNNABLE;
-        pBlkTxEnv = NULL;
-    }
-
-    return 0;
 }
 
 int e1000_func_enable(struct pci_func *f)
 {
     /* Enable E1000 and set up memory mapped region. */
-    irq_setmask_8259A(irq_mask_8259A & ~(1<<11));
     pci_func_enable(f);
     mme1000 = (uint8_t *) mmio_map_region(f->reg_base[0], f->reg_size[0]);
 
-    /* Clear all interrupts. */
-    GET4B(mme1000, E1000_MM_IMC) = ~(uint32_t)0;
-
-    /* Enable transmit and receive function. */
     enable_transmit();
     enable_receive();
 

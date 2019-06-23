@@ -27,6 +27,5 @@ struct rx_desc
 int e1000_func_enable(struct pci_func *f);
 int e1000_transmit(const void *data, uint32_t len);
 int e1000_receive(void *data, uint32_t len);
-int e1000_interrupt_handler();
 
 #endif  // SOL >= 6
