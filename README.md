@@ -445,11 +445,21 @@ while (true) {
 }
 ```
 
+**Question 1.** *How did you structure your transmit implementation? In particular, what do you do if the transmit ring is full?*
 
+The user program first calls library function `sys_send_frame()`. This library function invokes a syscall `SYS_send_frame`, and trap into the kernel. The kernel checks the arguments, and calls `e1000_transmit()` in the driver.
 
-**Question 1.** *Do you have to do anything else to ensure that this I/O privilege setting is saved and restored properly when you subsequently switch from one environment to another? Why?*
+Look at the code in `ns/output.c`:
 
-No. Because `IOPL` is in `EFLAGS`, which will be properly saved and restored every time we switch from one environment to another. When an interrupt happens, the hardware will automatically save `EFLAGS` in the kernel stack; in `env_pop_tf()`, the `iret` instruction will restore the previously saved `EFLAGS`. 
+```c
+// Try to send a frame. Only retry once.
+if (sys_send_frame(ppkt->jp_data, ppkt->jp_len)) {
+    sys_yield();
+    sys_send_frame(ppkt->jp_data, ppkt->jp_len);
+}
+```
+
+If the transmit ring is full, the user program should retry exactly once. This guarantees that we do not drop packets too often, and we do not keep the packet for too long time such that may cause the connection RTT to blow up.
 
 **Exercise 2.** *Browse Intel's [Software Developer's Manual](https://pdos.csail.mit.edu/6.828/2018/readings/hardware/8254x_GBe_SDM.pdf) for the E1000. This manual covers several closely related Ethernet controllers. QEMU emulates the 82540EM.*
 
